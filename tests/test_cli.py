@@ -204,11 +204,16 @@ class PluginContractTests(unittest.TestCase):
         self.assertIn("#09090B", theme)
         self.assertIn("#D4AF67", theme)
         self.assertIn("#A83B42", theme)
+        self.assertIn("divider", theme)
         self.assertNotIn("access_token", panel.lower())
         self.assertNotIn("refresh_token", panel.lower())
         # Empty-state copy must wrap and not live as a clipped single-line ListView child.
         self.assertIn("wrapMode: Text.WordWrap", panel)
         self.assertIn("id: emptyState", panel)
+        # Layout minimalista: superfície única + divisórias (não cards empilhados).
+        self.assertIn("theme.divider", panel)
+        self.assertIn("radiusNone", theme)
+
 
     def test_i18n_empty_state_keys(self):
         root = Path(__file__).resolve().parents[1]

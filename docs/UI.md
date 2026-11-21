@@ -1,18 +1,25 @@
-# UI Obsidian Gold — painel Ryoku
+# UI Obsidian Gold — painel Ryoku (minimalista)
 
 Paleta isolada em `plugins/io.github.paulon34.ryoku-ai/Theme.qml` (não altera o tema global do Omarchy):
 
 | Token | Hex |
 | --- | --- |
 | Fundo | `#09090B` |
-| Superfície | `#18181C` |
-| Borda | `#303035` |
+| Superfície | `#121214` / `#18181C` |
+| Divisória | `#242428` |
+| Borda (foco) | `#303035` / dourado |
 | Dourado | `#D4AF67` / hover `#E6C37C` |
 | Perigo | `#A83B42` |
 | Texto | `#F2EFE8` / `#98989F` |
 
-Regras: dourado só em ações importantes; vermelho só em destruição/erro; 緑 e o nome Ryoku AI preservados; sem neon/glow/RGB.
+## Layout
 
-Empty state corrigido (texto centralizado com `wrapMode`, fora do `ListView` para não cortar).
+- **Uma superfície** preta contínua (sem cards internos).
+- **Sidebar** integrada à esquerda + divisória vertical fina.
+- **Chat** sem moldura; bolhas discretas, raio mínimo.
+- **Composer** como faixa inferior, separado por linha horizontal.
+- **Cabeçalho** flat com botões outlined finos (dourado / vermelho só em Apagar).
 
-Rollback do plugin: `scripts/rollback-plugin.sh`.
+Empty state centralizado, sem caixa, com wrap (sem texto cortado).
+
+Rollback: `scripts/rollback-plugin.sh`.
