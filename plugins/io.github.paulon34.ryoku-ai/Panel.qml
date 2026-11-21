@@ -254,7 +254,7 @@ Panel {
     owner: root.hostWidget || root
     bar: root.bar
     open: root.opened
-    focusTarget: keyCatcher
+    focusTarget: input
     contentWidth: panel.fittedContentWidth(Style.space(520))
     contentHeight: panel.fittedContentHeight(Style.space(420))
 
@@ -432,6 +432,10 @@ Panel {
               text: root.draft
               enabled: !root.busy && root.loggedIn
               onTextChanged: root.draft = text
+              Keys.onEscapePressed: function (event) {
+                event.accepted = true
+                root.close()
+              }
               Keys.onReturnPressed: function (event) {
                 if (event.modifiers & Qt.ShiftModifier) {
                   event.accepted = false
