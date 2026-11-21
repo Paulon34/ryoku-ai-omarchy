@@ -26,6 +26,7 @@ ryoku chat --jsonl --prompt-stdin   # UI: prompt via stdin, eventos NDJSON
 ryoku history list [--json]
 ryoku history show ID [--json]
 ryoku history rename ID "título"
+printf "Novo título" | ryoku history rename ID --title-stdin  # sem título no argv
 ryoku history delete ID            # pede confirmação (ou --yes)
 ryoku history clear                # pede confirmação (ou --yes)
 ```
@@ -49,13 +50,13 @@ omarchy bar put io.github.paulon34.ryoku-ai --section left
 
 Rollback: `scripts/rollback-plugin.sh` — remove só o plugin Ryoku; **não** altera bandeja animada, Google Agenda nem Resonance.
 
-O QML usa `Quickshell.Io.Process` com argv estático e stdin para prompts. Tokens SIWC nunca passam pelo QML.
+O QML usa `Quickshell.Io.Process` com stdin para prompts e títulos de conversas. Os botões **Renomear → Salvar/Cancelar** editam o título da conversa selecionada, preservando mensagens. Títulos não são enviados no argv do processo; tokens SIWC nunca passam pelo QML.
 
 ## PASS_REAL (notebook)
 
 - [ ] Mensagem no terminal → reaparece no painel após fechar/abrir
 - [ ] Reinício do Quickshell / sessão → mesma conversa
-- [ ] Nova conversa, troca, apagar com confirmação
+- [ ] Nova conversa, troca, renomear por Enter/Salvar/Esc, apagar com confirmação
 - [ ] Logout preserva SQLite; login volta a enviar contexto
 - [ ] Esc fecha painel; Enter envia; UTF-8; 2 monitores / escala 1.25
 - [ ] Streaming cancelável sem corromper histórico anterior

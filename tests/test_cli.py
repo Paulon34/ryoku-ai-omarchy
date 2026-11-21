@@ -101,6 +101,42 @@ class CLITests(unittest.TestCase):
             self.assertEqual(len(store.list_conversations("p1")), 1)
             store.close()
 
+    def test_history_rename_stdin_persists_and_validates(self):
+        bridge = MagicMock()
+        bridge.__enter__.return_value = bridge
+        bridge.__exit__.return_value = None
+        bridge.request.return_value = {
+            "status": "connected",
+            "sharing": True,
+            "profileId": "p1",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            db = Path(directory) / "db.sqlite3"
+            store = HistoryStore(db)
+            conv = store.create_conversation("p1", title="Antigo")
+            store.close()
+
+            args = ["history", "rename", conv.id, "--title-stdin", "--history-db", str(db)]
+            with patch("ryoku_ai.cli.bridge_ready", return_value=(True, "ok")):
+                with patch("ryoku_ai.cli._bridge", return_value=bridge):
+                    with patch("sys.stdin", io.StringIO("Meu título novo\n")):
+                        with contextlib.redirect_stdout(io.StringIO()):
+                            self.assertEqual(main(args), 0)
+                    # Não aceita um título vazio, nem dois métodos ao mesmo tempo.
+                    with patch("sys.stdin", io.StringIO("  \n")):
+                        with contextlib.redirect_stderr(io.StringIO()):
+                            self.assertEqual(main(args), 3)
+                    with contextlib.redirect_stderr(io.StringIO()):
+                        self.assertEqual(
+                            main(["history", "rename", conv.id, "X", "--title-stdin",
+                                  "--history-db", str(db)]),
+                            2,
+                        )
+            store = HistoryStore(db)
+            self.assertEqual(store.get_conversation(conv.id, "p1").title, "Meu título novo")
+            self.assertIsNone(store.get_conversation(conv.id, "other-profile"))
+            store.close()
+
     def test_history_list_json(self):
         bridge = MagicMock()
         bridge.__enter__.return_value = bridge

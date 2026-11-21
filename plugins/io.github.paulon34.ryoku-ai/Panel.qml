@@ -23,6 +23,10 @@ Panel {
   property string draft: ""
   property bool busy: false
   property bool confirmDelete: false
+  property bool renaming: false
+  property bool renameBusy: false
+  property string renameDraft: ""
+  property string pendingRename: ""
   property string streamBuffer: ""
   property string pendingPrompt: ""
   property bool loggedIn: true
@@ -41,6 +45,7 @@ Panel {
 
   function close() {
     root.confirmDelete = false
+    root.renaming = false
     root.controller.hide()
   }
 
@@ -56,8 +61,9 @@ Panel {
   }
 
   function loadConversation(id) {
-    if (!id)
+    if (!id || root.renameBusy)
       return
+    root.renaming = false
     root.activeId = id
     root.messages = []
     showProc.command = [root.ryokuBin, "history", "show", id, "--json"]
@@ -65,13 +71,58 @@ Panel {
   }
 
   function startNew() {
-    if (root.busy)
+    if (root.busy || root.renameBusy)
       return
+    root.renaming = false
     // Cria conversa vazia no próximo envio com --new; limpa UI.
     root.activeId = ""
     root.messages = []
     root.statusLine = ""
     root.confirmDelete = false
+  }
+
+  function startRename() {
+    if (!root.activeId || root.busy || root.renameBusy)
+      return
+    var title = ""
+    for (var i = 0; i < root.conversations.length; i++) {
+      var c = root.conversations[i]
+      if (String(c.id) === root.activeId) {
+        title = String(c.title || "")
+        break
+      }
+    }
+    root.renameDraft = title
+    root.confirmDelete = false
+    root.renaming = true
+    Qt.callLater(function () {
+      renameInput.forceActiveFocus()
+      renameInput.selectAll()
+    })
+  }
+
+  function cancelRename() {
+    if (root.renameBusy)
+      return
+    root.renaming = false
+    root.renameDraft = ""
+    input.forceActiveFocus()
+  }
+
+  function saveRename() {
+    var title = String(root.renameDraft || "").trim()
+    if (!root.activeId || root.busy || root.renameBusy)
+      return
+    if (!title) {
+      root.statusLine = strings.t("panel.renameEmpty")
+      return
+    }
+    root.renameBusy = true
+    root.statusLine = ""
+    root.pendingRename = title + "\n"
+    renameProc.command = [root.ryokuBin, "history", "rename", root.activeId, "--title-stdin"]
+    renameProc.stdinEnabled = true
+    renameProc.running = true
   }
 
   function sendMessage() {
@@ -236,6 +287,36 @@ Panel {
   }
 
   Process {
+    id: renameProc
+    running: false
+    stdinEnabled: true
+    onStarted: {
+      renameProc.write(root.pendingRename)
+      root.pendingRename = ""
+      renameProc.stdinEnabled = false
+    }
+    stderr: StdioCollector {
+      onStreamFinished: {
+        var detail = String(this.text || "").trim()
+        if (detail !== "")
+          root.statusLine = strings.t("panel.error") + ": " + detail
+      }
+    }
+    onExited: function (exitCode, exitStatus) {
+      root.renameBusy = false
+      if (exitCode === 0) {
+        root.renaming = false
+        root.renameDraft = ""
+        root.statusLine = ""
+        root.reloadAll()
+        input.forceActiveFocus()
+      } else if (!root.statusLine) {
+        root.statusLine = strings.t("panel.error") + " (exit " + exitCode + ")"
+      }
+    }
+  }
+
+  Process {
     id: deleteProc
     running: false
     stdout: StdioCollector {
@@ -262,7 +343,7 @@ Panel {
       id: keyCatcher
       anchors.fill: parent
       onCloseRequested: root.close()
-      blocked: input.activeFocus
+      blocked: input.activeFocus || renameInput.activeFocus
       onTabRequested: function (direction) {
         root.switchPanel(direction)
       }
@@ -292,19 +373,25 @@ Panel {
 
             Button {
               text: strings.t("panel.new")
-              enabled: !root.busy
+              enabled: !root.busy && !root.renameBusy
               onClicked: root.startNew()
             }
 
             Button {
               text: strings.t("panel.refresh")
-              enabled: !root.busy
+              enabled: !root.busy && !root.renameBusy
               onClicked: root.reloadAll()
             }
 
             Button {
+              text: strings.t("panel.rename")
+              enabled: root.activeId !== "" && !root.busy && !root.renameBusy
+              onClicked: root.startRename()
+            }
+
+            Button {
               text: strings.t("panel.delete")
-              enabled: root.activeId !== "" && !root.busy
+              enabled: root.activeId !== "" && !root.busy && !root.renameBusy
               onClicked: root.confirmDelete = true
             }
           }
@@ -399,6 +486,39 @@ Panel {
             }
           }
 
+          // Editor de título: só altera a conversa selecionada.
+          RowLayout {
+            Layout.fillWidth: true
+            visible: root.renaming
+            spacing: Style.space(8)
+            TextField {
+              id: renameInput
+              Layout.fillWidth: true
+              placeholderText: strings.t("panel.renamePlaceholder")
+              text: root.renameDraft
+              enabled: !root.renameBusy
+              onTextChanged: root.renameDraft = text
+              Keys.onEscapePressed: function (event) {
+                event.accepted = true
+                root.cancelRename()
+              }
+              Keys.onReturnPressed: function (event) {
+                event.accepted = true
+                root.saveRename()
+              }
+            }
+            Button {
+              text: strings.t("panel.renameSave")
+              enabled: !root.renameBusy && String(root.renameDraft).trim() !== ""
+              onClicked: root.saveRename()
+            }
+            Button {
+              text: strings.t("panel.renameCancel")
+              enabled: !root.renameBusy
+              onClicked: root.cancelRename()
+            }
+          }
+
           // Confirmação de exclusão
           RowLayout {
             Layout.fillWidth: true
@@ -430,7 +550,7 @@ Panel {
               Layout.fillWidth: true
               placeholderText: strings.t("panel.inputPlaceholder")
               text: root.draft
-              enabled: !root.busy && root.loggedIn
+              enabled: !root.busy && !root.renameBusy && root.loggedIn
               onTextChanged: root.draft = text
               Keys.onEscapePressed: function (event) {
                 event.accepted = true
@@ -448,7 +568,7 @@ Panel {
 
             Button {
               text: strings.t("panel.send")
-              enabled: !root.busy && root.loggedIn && String(root.draft).trim() !== ""
+              enabled: !root.busy && !root.renameBusy && root.loggedIn && String(root.draft).trim() !== ""
               onClicked: root.sendMessage()
             }
           }
