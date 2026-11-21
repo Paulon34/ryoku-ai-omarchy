@@ -10,6 +10,9 @@
   "panel.send": "Send",
   "panel.loginRequired": "Sign in first: ryoku login",
   "panel.empty": "No messages yet. Start a conversation.",
+  "panel.emptyBrand": "緑 Ryoku AI",
+  "panel.emptyHeadline": "How can I help today?",
+  "panel.emptySubtext": "Start a conversation to explore your Linux setup.",
   "panel.streaming": "Streaming…",
   "panel.conversations": "Conversations",
   "panel.refresh": "Refresh",
@@ -18,5 +21,7 @@
   "panel.renamePlaceholder": "New conversation title…",
   "panel.renameSave": "Save",
   "panel.renameCancel": "Cancel",
-  "panel.renameEmpty": "The title cannot be empty."
+  "panel.renameEmpty": "The title cannot be empty.",
+  "panel.you": "You",
+  "panel.assistant": "Ryoku"
 }
