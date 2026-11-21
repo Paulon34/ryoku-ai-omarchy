@@ -2,7 +2,7 @@
 
 **Status Fase 1 (texto/PDF):** PR #10 (`feat/chat-file-attachments`).  
 **Status Fase 2 (imagens UI):** esta branch (`feat/chat-image-vision`) — seleção PNG/JPEG/WebP, Ctrl+V (captura única), miniatura e aviso claro.  
-**Análise visual:** **não funcional** — `@siwc/local` aceita somente `content: string`. Envio de imagem ao modelo falha com `vision_unavailable` (sem resumo inventado).
+**Análise visual:** ver [VISION.md](VISION.md) — SIWC text-only; Ollama opt-in (`RYOKU_VISION_BACKEND=ollama`) quando instalado. Sem pull automático.
 
 Não declarar visão OK sem PASS_REAL no hardware com detalhe exclusivo no print.
 

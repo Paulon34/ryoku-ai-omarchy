@@ -275,18 +275,9 @@ def vision_backend_enabled() -> bool:
 
 
 def vision_status() -> dict[str, Any]:
-    enabled = vision_backend_enabled()
-    return {
-        "vision_available": False,  # nenhum backend multimodal ligado nesta build
-        "siwc_text_only": True,
-        "opt_in_env": "RYOKU_VISION_BACKEND",
-        "opt_in_set": enabled,
-        "message": (
-            "Análise de imagens indisponível: @siwc/local aceita somente texto. "
-            "Não há backend multimodal opt-in ativo nesta build. "
-            "Não baixe modelos locais sem verificar RAM/VRAM/disco e autorização."
-        ),
-    }
+    from .vision import vision_capabilities
+
+    return vision_capabilities()
 
 
 def clipboard_image_dir() -> Path:
@@ -422,6 +413,47 @@ def extract_many(paths: list[str]) -> list[ExtractedAttachment]:
             )
         items.append(item)
     return items
+
+
+def prepare_attachments(paths: list[str]) -> tuple[list[ExtractedAttachment], list[ExtractedAttachment]]:
+    """Separa documentos (texto extraído) e imagens (metadados; bytes só no path)."""
+    if not paths:
+        return [], []
+    if len(paths) > max_files():
+        raise AttachmentError("too_many", f"Máximo de {max_files()} anexos por mensagem.")
+    documents: list[ExtractedAttachment] = []
+    images: list[ExtractedAttachment] = []
+    total = 0
+    for raw in paths:
+        resolved = validate_source_path(raw)
+        ext = resolved.suffix.lower()
+        if ext in IMAGE_EXTENSIONS:
+            status = vision_status()
+            if not status.get("vision_available"):
+                raise AttachmentError("vision_unavailable", str(status.get("message") or "Visão indisponível."))
+            images.append(
+                ExtractedAttachment(
+                    id=str(uuid.uuid4()),
+                    filename=resolved.name,
+                    path=str(resolved),
+                    extension=ext,
+                    size_bytes=resolved.stat().st_size,
+                    mime_hint=_mime_hint(ext),
+                    text="",
+                    truncated=False,
+                    warning=None,
+                )
+            )
+            continue
+        item = extract_file(resolved)
+        total += len(item.text)
+        if total > max_total_attach_chars():
+            raise AttachmentError(
+                "context_budget",
+                f"Anexos excedem o orçamento total de {max_total_attach_chars()} caracteres.",
+            )
+        documents.append(item)
+    return documents, images
 
 
 def format_attachments_for_prompt(attachments: list[ExtractedAttachment], user_text: str) -> str:

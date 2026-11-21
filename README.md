@@ -10,7 +10,7 @@ Terminal primeiro · ChatGPT com consentimento · Segurança · Quickshell
 
 </div>
 
-> **Pré-alpha v0.5 (ditado + anexos):** composer com 🎙 via Omarchy/Superwhisper; anexos texto/PDF; imagens só UI (`vision_unavailable`). **PASS_REAL no notebook ainda pendente.** Sem merge automático das PRs draft.
+> **Pré-alpha v0.5 (ditado + anexos + visão opt-in):** 🎙 Superwhisper; anexos texto/PDF; visão via Ollama local **somente com opt-in** (SIWC continua text-only). **PASS_REAL visão pendente.** Sem merge automático / sem pull de modelos.
 
 ## A ideia
 

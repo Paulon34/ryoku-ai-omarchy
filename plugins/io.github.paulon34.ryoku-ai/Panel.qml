@@ -44,6 +44,7 @@ Panel {
   property bool dictationCloudConsented: false
   property bool dictationCapsLoaded: false
   property string dictationPrivacyHint: ""
+  property var sendSnapshot: null
 
   readonly property string ryokuBin: "ryoku"
   readonly property int maxPendingAttachments: 5
@@ -358,18 +359,46 @@ Panel {
     renameProc.running = true
   }
 
+  function abortFailedSend(message) {
+    root.busy = false
+    root.streamBuffer = ""
+    if (root.sendSnapshot) {
+      var snap = root.sendSnapshot
+      root.draft = String(snap.draft || "")
+      root.pendingAttachments = snap.attachments ? snap.attachments.slice() : []
+      if (typeof snap.messageCount === "number" && root.messages.length > snap.messageCount)
+        root.messages = root.messages.slice(0, snap.messageCount)
+      // Não adota conversation_id de turnos que falharam antes do start.
+      if (!snap.hadActiveId && !snap.started)
+        root.activeId = ""
+      root.sendSnapshot = null
+    }
+    var shortMsg = String(message || strings.t("panel.error"))
+    if (shortMsg.length > 160)
+      shortMsg = shortMsg.slice(0, 157) + "…"
+    root.statusLine = shortMsg
+  }
+
   function sendMessage() {
     var text = String(root.draft || "").trim()
-    if (text === "" || root.busy)
+    if (text === "" || root.busy || root.dictationBusy)
       return
+    var attachmentsCopy = root.pendingAttachments.slice()
+    root.sendSnapshot = {
+      "draft": text,
+      "attachments": attachmentsCopy,
+      "messageCount": root.messages.length,
+      "hadActiveId": root.activeId !== "",
+      "started": false
+    }
     root.busy = true
     root.streamBuffer = ""
     root.statusLine = strings.t("panel.streaming")
     var label = text
-    if (root.pendingAttachments.length > 0) {
+    if (attachmentsCopy.length > 0) {
       var names = []
-      for (var i = 0; i < root.pendingAttachments.length; i++)
-        names.push(String(root.pendingAttachments[i].filename || ""))
+      for (var i = 0; i < attachmentsCopy.length; i++)
+        names.push(String(attachmentsCopy[i].filename || ""))
       label = text + "\n[" + strings.t("panel.attachments") + ": " + names.join(", ") + "]"
     }
     root.messages = root.messages.concat([{
@@ -384,8 +413,8 @@ Panel {
     root.draft = ""
 
     var paths = []
-    for (var j = 0; j < root.pendingAttachments.length; j++)
-      paths.push(String(root.pendingAttachments[j].path || ""))
+    for (var j = 0; j < attachmentsCopy.length; j++)
+      paths.push(String(attachmentsCopy[j].path || ""))
     root.pendingPrompt = JSON.stringify({
       "prompt": text,
       "attachments": paths.map(function (p) {
@@ -420,8 +449,12 @@ Panel {
     var event = obj.event
     if (event === "start" && obj.conversation_id) {
       root.activeId = String(obj.conversation_id)
+      if (root.sendSnapshot)
+        root.sendSnapshot.started = true
       if (obj.truncated)
         root.statusLine = "Contexto truncado (" + obj.omitted + ")"
+      if (obj.backend)
+        root.statusLine = strings.t("panel.visionBackend") + ": " + String(obj.backend)
     } else if (event === "delta" && typeof obj.text === "string") {
       root.streamBuffer += obj.text
       if (root.messages.length > 0) {
@@ -434,18 +467,21 @@ Panel {
       }
     } else if (event === "done") {
       root.busy = false
+      root.sendSnapshot = null
       root.statusLine = ""
       if (obj.conversation_id)
         root.activeId = String(obj.conversation_id)
+      if (obj.backend)
+        root.statusLine = strings.t("panel.visionBackend") + ": " + String(obj.backend) + (obj.model ? (" / " + String(obj.model)) : "")
       Qt.callLater(root.reloadAll)
       if (root.activeId !== "")
         Qt.callLater(function () {
           root.loadConversation(root.activeId)
         })
     } else if (event === "error") {
-      root.busy = false
       root.loggedIn = obj.code !== "sign_in_required" && obj.code !== "sharing_not_enabled"
-      root.statusLine = strings.t("panel.error") + ": " + String(obj.message || obj.code || "")
+      var err = String(obj.message || obj.code || strings.t("panel.error"))
+      root.abortFailedSend(err)
     }
   }
 
@@ -531,9 +567,7 @@ Panel {
     }
     onExited: function (exitCode, exitStatus) {
       if (root.busy) {
-        root.busy = false
-        if (root.statusLine === strings.t("panel.streaming"))
-          root.statusLine = strings.t("panel.error") + " (exit " + exitCode + ")"
+        root.abortFailedSend(strings.t("panel.error") + " (exit " + exitCode + ")")
       }
     }
   }

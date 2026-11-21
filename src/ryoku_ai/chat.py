@@ -11,8 +11,8 @@ from typing import Any
 from .attachments import (
     AttachmentError,
     ExtractedAttachment,
-    extract_many,
     format_attachments_for_prompt,
+    prepare_attachments,
 )
 from .history import (
     DEFAULT_CONTEXT_CHAR_BUDGET,
@@ -22,6 +22,7 @@ from .history import (
     suggest_title,
 )
 from .siwc import SiwcBridge, SiwcError
+from .vision import VisionError, analyze_images
 
 
 def pick_model(bridge: SiwcBridge, requested: str | None) -> str:
@@ -64,6 +65,67 @@ def emit_jsonl(event: str, **fields: Any) -> None:
     payload = {"event": event, **fields}
     sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
     sys.stdout.flush()
+
+
+def run_vision_turn(
+    store: HistoryStore,
+    *,
+    conversation_id: str,
+    profile_id: str,
+    user_text: str,
+    documents: Sequence[ExtractedAttachment],
+    images: Sequence[ExtractedAttachment],
+    on_delta: Callable[[str], None] | None = None,
+    jsonl: bool = False,
+) -> str:
+    """Analisa imagens com backend opt-in (ex.: Ollama). Não usa tokens SIWC."""
+    doc_context = format_attachments_for_prompt(list(documents), user_text)
+    prompt = doc_context
+    image_paths = [Path(item.path) for item in images]
+    try:
+        result = analyze_images(image_paths, prompt)
+    except (VisionError, AttachmentError) as exc:
+        code = getattr(exc, "code", "vision_error")
+        message = getattr(exc, "message", str(exc))
+        if jsonl:
+            # Sem evento start — a UI restaura rascunho/anexos sem conversa fantasma.
+            emit_jsonl("error", code=code, message=message)
+        raise
+    labeled = f"[visão: {result.backend}/{result.model}]\n{result.text}"
+    if jsonl:
+        emit_jsonl(
+            "start",
+            conversation_id=conversation_id,
+            model=f"{result.backend}:{result.model}",
+            truncated=False,
+            omitted=0,
+            attachments=[item.to_public_dict() for item in [*documents, *images]],
+            backend=result.backend,
+        )
+        emit_jsonl("delta", text=labeled)
+    elif on_delta:
+        on_delta(labeled)
+    names = ", ".join(item.filename for item in [*documents, *images])
+    display_user = f"{user_text}\n\n[anexos: {names}]" if names else user_text
+    store.append_turn(
+        conversation_id,
+        user_text=display_user,
+        assistant_text=labeled,
+        status="complete",
+        model=f"{result.backend}:{result.model}",
+        title_if_empty=suggest_title(user_text),
+        profile_id=profile_id,
+        attachments=[*documents, *images],
+    )
+    if jsonl:
+        emit_jsonl(
+            "done",
+            conversation_id=conversation_id,
+            text=labeled,
+            backend=result.backend,
+            model=result.model,
+        )
+    return labeled
 
 
 def run_turn(
@@ -195,6 +257,16 @@ def run_chat_repl(
             out(f"{exc.message}\n")
         return 3
 
+    # Valida anexos ANTES de criar conversa — evita histórico vazio e "..." na UI.
+    try:
+        prepared_docs, prepared_images = prepare_attachments(list(attachment_paths or []))
+    except AttachmentError as exc:
+        if jsonl:
+            emit_jsonl("error", code=exc.code, message=exc.message)
+        else:
+            out(f"Anexo: {exc.message}\n")
+        return 1
+
     store = HistoryStore(history_path or default_db_path())
     try:
         try:
@@ -202,7 +274,7 @@ def run_chat_repl(
                 profile_id,
                 conversation_id=conversation_id,
                 create_new=create_new,
-                model=selected,
+                model=selected if not prepared_images else f"vision:{os_environ_model_hint()}",
             )
         except KeyError as exc:
             out(f"{exc}\n")
@@ -213,29 +285,49 @@ def run_chat_repl(
             out(f"Conversa: {conv.id} — {conv.title}\n")
             out("Histórico local persistente. Ctrl+C ou linha vazia para sair.\n\n")
 
-        def turn(prompt: str, paths: Sequence[str] | None = None) -> None:
-            try:
-                extracted = extract_many(list(paths or []))
-            except AttachmentError as exc:
-                if jsonl:
-                    emit_jsonl("error", code=exc.code, message=exc.message)
-                else:
-                    out(f"Anexo: {exc.message}\n")
-                raise
+        def turn(
+            prompt: str,
+            docs: Sequence[ExtractedAttachment] | None = None,
+            images: Sequence[ExtractedAttachment] | None = None,
+            paths: Sequence[str] | None = None,
+        ) -> None:
+            document_list = list(docs or [])
+            image_list = list(images or [])
+            if paths is not None:
+                try:
+                    document_list, image_list = prepare_attachments(list(paths))
+                except AttachmentError as exc:
+                    if jsonl:
+                        emit_jsonl("error", code=exc.code, message=exc.message)
+                    else:
+                        out(f"Anexo: {exc.message}\n")
+                    raise
             if not jsonl:
                 out("Ryoku: ")
             try:
-                run_turn(
-                    bridge,
-                    store,
-                    conversation_id=conv.id,
-                    profile_id=profile_id,
-                    model=selected,
-                    user_text=prompt,
-                    attachments=extracted,
-                    on_delta=(None if jsonl else (lambda delta: out(delta))),
-                    jsonl=jsonl,
-                )
+                if image_list:
+                    run_vision_turn(
+                        store,
+                        conversation_id=conv.id,
+                        profile_id=profile_id,
+                        user_text=prompt,
+                        documents=document_list,
+                        images=image_list,
+                        on_delta=(None if jsonl else (lambda delta: out(delta))),
+                        jsonl=jsonl,
+                    )
+                else:
+                    run_turn(
+                        bridge,
+                        store,
+                        conversation_id=conv.id,
+                        profile_id=profile_id,
+                        model=selected,
+                        user_text=prompt,
+                        attachments=document_list,
+                        on_delta=(None if jsonl else (lambda delta: out(delta))),
+                        jsonl=jsonl,
+                    )
             except KeyboardInterrupt:
                 if not jsonl:
                     out("\n[interrupção — histórico anterior preservado]\n")
@@ -243,12 +335,29 @@ def run_chat_repl(
             if not jsonl:
                 out("\n\n")
 
+        def _drop_empty_new_conversation() -> None:
+            if not create_new:
+                return
+            if store.list_messages(conv.id):
+                return
+            try:
+                store.delete(conv.id, profile_id)
+            except KeyError:
+                pass
+
         if one_shot is not None:
             try:
-                turn(one_shot, attachment_paths)
+                turn(one_shot, prepared_docs, prepared_images)
             except AttachmentError:
+                _drop_empty_new_conversation()
+                return 1
+            except VisionError as exc:
+                _drop_empty_new_conversation()
+                if not jsonl:
+                    out(f"\nVisão [{exc.code}]: {exc.message}\n")
                 return 1
             except SiwcError as exc:
+                _drop_empty_new_conversation()
                 if not jsonl:
                     out(f"\nErro [{exc.code}]: {exc.message}\n")
                 return 1
@@ -272,8 +381,12 @@ def run_chat_repl(
                     if not jsonl:
                         out("Saindo.\n")
                     return 0
-                turn(prompt, None)
+                turn(prompt, paths=None)
             except AttachmentError:
+                continue
+            except VisionError as exc:
+                if not jsonl:
+                    out(f"\nVisão [{exc.code}]: {exc.message}\n")
                 continue
             except SiwcError as exc:
                 if not jsonl:
@@ -287,3 +400,11 @@ def run_chat_repl(
                 return 130
     finally:
         store.close()
+
+
+def os_environ_model_hint() -> str:
+    from .vision import ollama_model, vision_env_backend
+
+    if vision_env_backend() in {"1", "true", "yes", "ollama"}:
+        return f"ollama:{ollama_model()}"
+    return "unavailable"
