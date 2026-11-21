@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.paulon34.ryoku-ai",
+  "name": "Ryoku AI",
+  "version": "0.3.0",
+  "author": "Paulo Henrique",
+  "license": "MIT",
+  "description": "Painel 緑 Ryoku AI: chat com histórico local persistente via CLI ryoku, sem tokens no QML.",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Ryoku AI",
+    "category": "AI",
+    "allowMultiple": false,
+    "defaultSection": "left"
+  }
+}
