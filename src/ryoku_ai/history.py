@@ -61,14 +61,48 @@ class Message:
     content: str
     status: str
     created_at: str
+    attachments: list[dict[str, Any]] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "id": self.id,
             "conversation_id": self.conversation_id,
             "role": self.role,
             "content": self.content,
             "status": self.status,
+            "created_at": self.created_at,
+        }
+        if self.attachments is not None:
+            payload["attachments"] = self.attachments
+        return payload
+
+
+@dataclass(frozen=True)
+class AttachmentMeta:
+    id: str
+    message_id: int
+    conversation_id: str
+    profile_id: str
+    filename: str
+    extension: str
+    size_bytes: int
+    mime_hint: str
+    truncated: bool
+    warning: str | None
+    created_at: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "message_id": self.message_id,
+            "conversation_id": self.conversation_id,
+            "profile_id": self.profile_id,
+            "filename": self.filename,
+            "extension": self.extension,
+            "size_bytes": self.size_bytes,
+            "mime_hint": self.mime_hint,
+            "truncated": self.truncated,
+            "warning": self.warning,
             "created_at": self.created_at,
         }
 
@@ -147,10 +181,27 @@ class HistoryStore:
               key TEXT PRIMARY KEY,
               value TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS attachments (
+              id TEXT PRIMARY KEY,
+              message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+              conversation_id TEXT NOT NULL,
+              profile_id TEXT NOT NULL,
+              filename TEXT NOT NULL,
+              extension TEXT NOT NULL,
+              size_bytes INTEGER NOT NULL,
+              mime_hint TEXT NOT NULL,
+              truncated INTEGER NOT NULL DEFAULT 0,
+              warning TEXT,
+              created_at TEXT NOT NULL
+            );
             CREATE INDEX IF NOT EXISTS idx_conversations_profile_updated
               ON conversations(profile_id, updated_at DESC);
             CREATE INDEX IF NOT EXISTS idx_messages_conversation
               ON messages(conversation_id, id);
+            CREATE INDEX IF NOT EXISTS idx_attachments_message
+              ON attachments(message_id);
+            CREATE INDEX IF NOT EXISTS idx_attachments_conversation
+              ON attachments(conversation_id);
             """
         )
         self._conn.commit()
@@ -273,6 +324,13 @@ class HistoryStore:
         return conv
 
     def delete(self, conversation_id: str, profile_id: str) -> None:
+        attachment_ids = [
+            str(row["id"])
+            for row in self._conn.execute(
+                "SELECT id FROM attachments WHERE conversation_id = ? AND profile_id = ?",
+                (conversation_id, profile_id),
+            ).fetchall()
+        ]
         cur = self._conn.execute(
             "DELETE FROM conversations WHERE id = ? AND profile_id = ?",
             (conversation_id, profile_id),
@@ -283,14 +341,51 @@ class HistoryStore:
             self.set_active_id(profile_id, None)
         self._conn.commit()
         self._conn.execute("VACUUM")
+        from .attachments import delete_extracted_text
+
+        for attachment_id in attachment_ids:
+            delete_extracted_text(attachment_id)
 
     def clear_profile(self, profile_id: str) -> int:
+        attachment_ids = [
+            str(row["id"])
+            for row in self._conn.execute(
+                "SELECT id FROM attachments WHERE profile_id = ?",
+                (profile_id,),
+            ).fetchall()
+        ]
         cur = self._conn.execute("DELETE FROM conversations WHERE profile_id = ?", (profile_id,))
         deleted = cur.rowcount
         self.set_active_id(profile_id, None)
         self._conn.commit()
         self._conn.execute("VACUUM")
+        from .attachments import delete_extracted_text
+
+        for attachment_id in attachment_ids:
+            delete_extracted_text(attachment_id)
         return deleted
+
+    def list_attachments_for_message(self, message_id: int) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT * FROM attachments WHERE message_id = ? ORDER BY created_at ASC",
+            (message_id,),
+        ).fetchall()
+        return [
+            AttachmentMeta(
+                id=row["id"],
+                message_id=int(row["message_id"]),
+                conversation_id=row["conversation_id"],
+                profile_id=row["profile_id"],
+                filename=row["filename"],
+                extension=row["extension"],
+                size_bytes=int(row["size_bytes"]),
+                mime_hint=row["mime_hint"],
+                truncated=bool(row["truncated"]),
+                warning=row["warning"],
+                created_at=row["created_at"],
+            ).to_dict()
+            for row in rows
+        ]
 
     def list_messages(self, conversation_id: str) -> list[Message]:
         rows = self._conn.execute(
@@ -305,6 +400,7 @@ class HistoryStore:
                 content=row["content"],
                 status=row["status"],
                 created_at=row["created_at"],
+                attachments=self.list_attachments_for_message(int(row["id"])) or None,
             )
             for row in rows
         ]
@@ -318,14 +414,17 @@ class HistoryStore:
         status: str = "complete",
         model: str | None = None,
         title_if_empty: str | None = None,
-    ) -> None:
+        profile_id: str | None = None,
+        attachments: Sequence[Any] | None = None,
+    ) -> int:
         now = utc_now()
         with self._conn:
-            self._conn.execute(
+            cur = self._conn.execute(
                 "INSERT INTO messages(conversation_id, role, content, status, created_at) "
                 "VALUES (?, 'user', ?, 'complete', ?)",
                 (conversation_id, user_text, now),
             )
+            user_message_id = int(cur.lastrowid)
             self._conn.execute(
                 "INSERT INTO messages(conversation_id, role, content, status, created_at) "
                 "VALUES (?, 'assistant', ?, ?, ?)",
@@ -351,6 +450,31 @@ class HistoryStore:
                         "UPDATE conversations SET title = ? WHERE id = ?",
                         (title_if_empty[:80], conversation_id),
                     )
+            if attachments and profile_id:
+                from .attachments import persist_extracted_text
+
+                for item in attachments:
+                    persist_extracted_text(item.id, item.text)
+                    self._conn.execute(
+                        "INSERT INTO attachments("
+                        "id, message_id, conversation_id, profile_id, filename, extension, "
+                        "size_bytes, mime_hint, truncated, warning, created_at"
+                        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            item.id,
+                            user_message_id,
+                            conversation_id,
+                            profile_id,
+                            item.filename,
+                            item.extension,
+                            item.size_bytes,
+                            item.mime_hint,
+                            1 if item.truncated else 0,
+                            item.warning,
+                            now,
+                        ),
+                    )
+        return user_message_id
 
     def resolve_conversation(
         self,
@@ -380,6 +504,33 @@ class HistoryStore:
         return self.create_conversation(profile_id, model=model)
 
 
+def _content_for_model(message: Message) -> str:
+    """Reaproveita texto extraído de anexos (arquivo local), sem binários no SQLite."""
+    content = message.content
+    if message.role != "user" or not message.attachments:
+        return content
+    from .attachments import load_extracted_text
+
+    blocks: list[str] = []
+    for meta in message.attachments:
+        attachment_id = str(meta.get("id") or "")
+        filename = str(meta.get("filename") or "anexo")
+        text = load_extracted_text(attachment_id) if attachment_id else None
+        if not text:
+            continue
+        header = f"--- Anexo: {filename}"
+        if meta.get("truncated"):
+            header += ", truncado"
+        header += " ---"
+        blocks.append(header)
+        if meta.get("warning"):
+            blocks.append(f"[aviso] {meta['warning']}")
+        blocks.append(text)
+    if not blocks:
+        return content
+    return content.rstrip() + "\n\n" + "\n".join(blocks)
+
+
 def build_context_window(
     messages: Sequence[Message],
     *,
@@ -387,18 +538,19 @@ def build_context_window(
 ) -> ContextWindow:
     """Inclui o máximo de mensagens recentes completas que cabem no orçamento."""
     usable = [m for m in messages if m.status == "complete" and m.role in {"user", "assistant"}]
-    selected: list[Message] = []
+    prepared = [(m, _content_for_model(m)) for m in usable]
+    selected: list[tuple[Message, str]] = []
     total = 0
-    for message in reversed(usable):
-        size = len(message.content)
+    for message, content in reversed(prepared):
+        size = len(content)
         if selected and total + size > budget:
             break
-        selected.append(message)
+        selected.append((message, content))
         total += size
     selected.reverse()
     omitted = len(usable) - len(selected)
     return ContextWindow(
-        messages=[{"role": m.role, "content": m.content} for m in selected],
+        messages=[{"role": m.role, "content": content} for m, content in selected],
         truncated=omitted > 0,
         omitted=omitted,
         budget=budget,

@@ -10,7 +10,7 @@ Terminal primeiro · ChatGPT com consentimento · Segurança · Quickshell
 
 </div>
 
-> **Pré-alpha v0.3 (Sprint 2):** histórico local persistente + plugin Quickshell. **PASS_REAL no notebook ainda pendente** (login PR #4 e painel issue #5). Não usa tokens de Codex nem chave de API cobrada à parte.
+> **Pré-alpha v0.4 (Fase 1 anexos):** histórico + painel Obsidian Gold + anexos de texto/PDF. Visão/imagens ainda bloqueadas pelo SIWC textual. **PASS_REAL no notebook ainda pendente.** Não usa tokens de Codex nem chave de API cobrada à parte.
 
 ## A ideia
 
@@ -19,9 +19,11 @@ Um comando `ryoku chat` para conversar naturalmente com um assistente via termin
 ## O que já funciona
 
 - `ryoku doctor` / `status` / `login` / `logout` / `models`
-- `ryoku chat` com histórico SQLite, contexto reenviado e `--jsonl --prompt-stdin` para a UI
+- `ryoku chat` com histórico SQLite, contexto reenviado, `--jsonl --prompt-stdin` / `--request-stdin` (anexos)
+- `ryoku attach inspect` para validar arquivos localmente
 - `ryoku history list|show|rename|delete|clear` (exclusão só com confirmação)
-- Plugin `io.github.paulon34.ryoku-ai` (BarWidget + Panel)
+- Plugin `io.github.paulon34.ryoku-ai` (BarWidget + Panel + seletor de anexos)
+- Detalhes de anexos: [docs/ATTACHMENTS.md](docs/ATTACHMENTS.md)
 
 ## Como testar no Omarchy
 
@@ -56,7 +58,7 @@ Testes: `.venv/bin/python -m unittest discover -s tests -v`.
 
 1. V0.1: CLI e diagnósticos
 2. V0.2: login SIWC (PR #4)
-3. V0.3: histórico + painel Quickshell (esta sprint)
-4. V0.4: diagnósticos assistidos / refinamentos Omarchy
+3. V0.3: histórico + painel Quickshell
+4. V0.4: anexos texto/PDF (Fase 1); visão multimodal quando o SIWC/backend permitir
 
 Código original **MIT**. Vendor `@siwc/local`: Noncommercial License do DevKit. Projeto independente.

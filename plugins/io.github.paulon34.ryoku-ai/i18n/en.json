@@ -23,5 +23,15 @@
   "panel.renameCancel": "Cancel",
   "panel.renameEmpty": "The title cannot be empty.",
   "panel.you": "You",
-  "panel.assistant": "Ryoku"
+  "panel.assistant": "Ryoku",
+  "panel.attach": "Attach file",
+  "panel.attachTitle": "Choose files for Ryoku",
+  "panel.attachFilterDocs": "Documents and code",
+  "panel.attachFilterAll": "All files",
+  "panel.attachInspecting": "Validating attachment…",
+  "panel.attachError": "Could not attach the file.",
+  "panel.attachLimit": "Attachment limit for this message reached.",
+  "panel.attachRemove": "Remove attachment",
+  "panel.attachTruncated": "truncated",
+  "panel.attachments": "attachments"
 }

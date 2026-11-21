@@ -23,5 +23,15 @@
   "panel.renameCancel": "Cancelar",
   "panel.renameEmpty": "O título não pode ficar vazio.",
   "panel.you": "Você",
-  "panel.assistant": "Ryoku"
+  "panel.assistant": "Ryoku",
+  "panel.attach": "Anexar arquivo",
+  "panel.attachTitle": "Escolher arquivos para o Ryoku",
+  "panel.attachFilterDocs": "Documentos e código",
+  "panel.attachFilterAll": "Todos os arquivos",
+  "panel.attachInspecting": "Validando anexo…",
+  "panel.attachError": "Não foi possível anexar o arquivo.",
+  "panel.attachLimit": "Limite de anexos por mensagem atingido.",
+  "panel.attachRemove": "Remover anexo",
+  "panel.attachTruncated": "truncado",
+  "panel.attachments": "anexos"
 }

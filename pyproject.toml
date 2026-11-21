@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ryoku-ai-omarchy"
-version = "0.3.0"
+version = "0.4.0"
 description = "Lightweight, privacy-first AI assistant foundation for Omarchy / Arch Linux"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -15,6 +15,7 @@ dependencies = []
 [project.optional-dependencies]
 # Login/chat also require Node.js 22+ and `npm install` inside siwc_bridge/.
 siwc = []
+pdf = ["pypdf>=5.0"]
 
 
 [project.scripts]

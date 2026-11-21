@@ -107,7 +107,14 @@ class ChatReplTests(unittest.TestCase):
             store = HistoryStore(Path(directory) / "db.sqlite3")
             conv = store.create_conversation("p")
             store.append_turn(conv.id, user_text="antes", assistant_text="resposta")
-            run_turn(bridge, store, conversation_id=conv.id, model="m", user_text="depois")
+            run_turn(
+                bridge,
+                store,
+                conversation_id=conv.id,
+                profile_id="p",
+                model="m",
+                user_text="depois",
+            )
             self.assertEqual(seen["input"][0]["content"], "antes")
             self.assertEqual(seen["input"][-1]["content"], "depois")
             store.close()

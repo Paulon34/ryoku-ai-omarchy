@@ -197,7 +197,9 @@ class PluginContractTests(unittest.TestCase):
         panel = (plugin / "Panel.qml").read_text(encoding="utf-8")
         theme = (plugin / "Theme.qml").read_text(encoding="utf-8")
         self.assertIn("stdinEnabled: true", panel)
-        self.assertIn("--prompt-stdin", panel)
+        self.assertIn("--request-stdin", panel)
+        self.assertIn("FileDialog", panel)
+        self.assertIn("pendingAttachments", panel)
         self.assertIn("textFormat: Text.PlainText", panel)
         self.assertIn("panel.emptyBrand", panel)
         self.assertIn("panel.emptyHeadline", panel)
@@ -226,6 +228,9 @@ class PluginContractTests(unittest.TestCase):
                 "panel.emptySubtext",
                 "panel.rename",
                 "panel.send",
+                "panel.attach",
+                "panel.attachRemove",
+                "panel.attachLimit",
             ):
                 self.assertIn(key, data)
                 self.assertTrue(str(data[key]).strip())
