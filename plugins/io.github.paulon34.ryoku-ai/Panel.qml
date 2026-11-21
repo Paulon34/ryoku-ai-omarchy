@@ -24,6 +24,7 @@ Panel {
   property bool busy: false
   property bool confirmDelete: false
   property string streamBuffer: ""
+  property string pendingPrompt: ""
   property bool loggedIn: true
 
   readonly property string ryokuBin: "ryoku"
@@ -64,6 +65,8 @@ Panel {
   }
 
   function startNew() {
+    if (root.busy)
+      return
     // Cria conversa vazia no próximo envio com --new; limpa UI.
     root.activeId = ""
     root.messages = []
@@ -88,6 +91,7 @@ Panel {
           "status": "partial"
         }])
     root.draft = ""
+    root.pendingPrompt = text + "\n"
 
     var cmd = [root.ryokuBin, "chat", "--jsonl", "--prompt-stdin"]
     if (root.activeId !== "")
@@ -95,12 +99,9 @@ Panel {
     else
       cmd = cmd.concat(["--new"])
     chatProc.command = cmd
+    chatProc.stdinEnabled = true
     chatProc.running = true
-    // Prompt via stdin — nunca como argumento observável em ps.
-    Qt.callLater(function () {
-      chatProc.write(text)
-      chatProc.write("\n")
-    })
+    // Prompt só será escrito quando o processo confirmar que iniciou.
   }
 
   function handleChatLine(line) {
@@ -206,16 +207,30 @@ Panel {
     id: chatProc
     running: false
     stdinEnabled: true
+    onStarted: {
+      // --prompt-stdin usa sys.stdin.read(): enviar newline não basta.
+      // Fechar o canal libera EOF sem colocar a mensagem no argv.
+      chatProc.write(root.pendingPrompt)
+      root.pendingPrompt = ""
+      chatProc.stdinEnabled = false
+    }
     stdout: SplitParser {
       onRead: function (line) {
         root.handleChatLine(line)
       }
     }
-    onExited: function () {
+    stderr: StdioCollector {
+      onStreamFinished: {
+        var detail = String(this.text || "").trim()
+        if (detail !== "" && root.statusLine === strings.t("panel.streaming"))
+          root.statusLine = strings.t("panel.error") + ": " + detail
+      }
+    }
+    onExited: function (exitCode, exitStatus) {
       if (root.busy) {
         root.busy = false
         if (root.statusLine === strings.t("panel.streaming"))
-          root.statusLine = ""
+          root.statusLine = strings.t("panel.error") + " (exit " + exitCode + ")"
       }
     }
   }
@@ -247,6 +262,7 @@ Panel {
       id: keyCatcher
       anchors.fill: parent
       onCloseRequested: root.close()
+      blocked: input.activeFocus
       onTabRequested: function (direction) {
         root.switchPanel(direction)
       }
@@ -276,11 +292,13 @@ Panel {
 
             Button {
               text: strings.t("panel.new")
+              enabled: !root.busy
               onClicked: root.startNew()
             }
 
             Button {
               text: strings.t("panel.refresh")
+              enabled: !root.busy
               onClicked: root.reloadAll()
             }
 
