@@ -18,6 +18,11 @@ from .attachments import (
 )
 from .chat import run_chat_repl
 from .diagnostics import collect, pretty
+from .dictation import DictationError, cancel as dictation_cancel
+from .dictation import capabilities as dictation_capabilities
+from .dictation import start as dictation_start
+from .dictation import status as dictation_status
+from .dictation import stop as dictation_stop
 from .history import HistoryStore, default_db_path
 from .siwc import SiwcBridge, SiwcError, bridge_ready, default_storage_dir, format_session
 
@@ -101,6 +106,21 @@ def build_parser() -> argparse.ArgumentParser:
     a_paste.add_argument("--json", action="store_true")
     a_caps = attach_subs.add_parser("capabilities", help="capacidades de visão/anexo")
     a_caps.add_argument("--json", action="store_true")
+
+    dictation = subs.add_parser(
+        "dictation",
+        help="ditado via Omarchy/Superwhisper (start/stop/cancel; sem áudio nos logs)",
+    )
+    dictation_subs = dictation.add_subparsers(dest="dictation_command", required=True)
+    for name, help_text in (
+        ("capabilities", "capacidades reais do backend selecionado"),
+        ("status", "fase idle/recording/… sem transcrição"),
+        ("start", "iniciar captura (texto vai ao campo com foco no stop)"),
+        ("stop", "parar e concluir transcrição"),
+        ("cancel", "cancelar sessão atual se o backend permitir"),
+    ):
+        sub = dictation_subs.add_parser(name, help=help_text)
+        sub.add_argument("--json", action="store_true", help="saída JSON")
 
     history = subs.add_parser("history", help="gerenciar conversas locais")
     history_subs = history.add_subparsers(dest="history_command", required=True)
@@ -341,6 +361,29 @@ def _cmd_attach(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_dictation(args: argparse.Namespace) -> int:
+    command = args.dictation_command
+    try:
+        if command == "capabilities":
+            payload = dictation_capabilities()
+        elif command == "status":
+            payload = dictation_status()
+        elif command == "start":
+            payload = dictation_start()
+        elif command == "stop":
+            payload = dictation_stop()
+        elif command == "cancel":
+            payload = dictation_cancel()
+        else:
+            return 2
+    except DictationError as exc:
+        print(json.dumps({"ok": False, "error": {"code": exc.code, "message": exc.message}}))
+        return 1
+    # Nunca incluir áudio/transcrição — só metadados de fase/capacidade.
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0 if payload.get("ok", True) else 1
+
+
 def _cmd_chat(args: argparse.Namespace) -> int:
     ready, reason = bridge_ready()
     if not ready:
@@ -487,7 +530,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"緑 RYOKU AI v{__version__}")
         print("Assistente de terminal para Omarchy / Arch Linux")
         print(
-            "Comandos: ryoku doctor | status | login | logout | models | chat | attach | history"
+            "Comandos: ryoku doctor | status | login | logout | models | chat | attach | dictation | history"
         )
         print("Dica: `ryoku chat` retoma a conversa mais recente; `ryoku chat --new` cria outra.")
         return 0
@@ -508,6 +551,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _cmd_models(args)
     if args.command == "attach":
         return _cmd_attach(args)
+    if args.command == "dictation":
+        return _cmd_dictation(args)
     if args.command == "chat":
         return _cmd_chat(args)
     if args.command == "history":

@@ -36,5 +36,16 @@
   "panel.attachTruncated": "truncated",
   "panel.attachments": "attachments",
   "panel.visionUnavailable": "Image analysis unavailable on this backend (SIWC is text-only).",
-  "panel.visionUnavailableShort": "no vision"
+  "panel.visionUnavailableShort": "no vision",
+  "panel.dictationStart": "Dictate",
+  "panel.dictationStop": "Stop dictation",
+  "panel.dictationCancel": "Cancel dictation",
+  "panel.dictationCancelUnavailable": "Programmatic cancel is unavailable on this backend.",
+  "panel.dictationRecording": "Recording…",
+  "panel.dictationTranscribing": "Transcribing…",
+  "panel.dictationCancelled": "Dictation cancelled.",
+  "panel.dictationError": "Dictation failed.",
+  "panel.dictationUnavailable": "Omarchy dictation unavailable.",
+  "panel.dictationLoading": "Detecting dictation backend…",
+  "panel.dictationCloudWarn": "Cloud dictation (Superwhisper). Click 🎙 again to confirm and record. Audio may leave this device."
 }

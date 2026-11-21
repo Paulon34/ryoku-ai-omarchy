@@ -36,5 +36,16 @@
   "panel.attachTruncated": "truncado",
   "panel.attachments": "anexos",
   "panel.visionUnavailable": "Análise de imagens indisponível neste backend (SIWC só texto).",
-  "panel.visionUnavailableShort": "sem visão"
+  "panel.visionUnavailableShort": "sem visão",
+  "panel.dictationStart": "Ditar",
+  "panel.dictationStop": "Parar ditado",
+  "panel.dictationCancel": "Cancelar ditado",
+  "panel.dictationCancelUnavailable": "Cancelamento programático indisponível neste backend.",
+  "panel.dictationRecording": "Gravando…",
+  "panel.dictationTranscribing": "Transcrevendo…",
+  "panel.dictationCancelled": "Ditado cancelado.",
+  "panel.dictationError": "Falha no ditado.",
+  "panel.dictationUnavailable": "Ditado Omarchy indisponível.",
+  "panel.dictationLoading": "Detectando backend de ditado…",
+  "panel.dictationCloudWarn": "Ditado em modo nuvem (Superwhisper). Clique de novo em 🎙 para confirmar e gravar. Áudio pode sair deste aparelho."
 }
