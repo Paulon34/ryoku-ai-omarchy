@@ -88,7 +88,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     h_rename = history_subs.add_parser("rename", help="renomear conversa")
     h_rename.add_argument("conversation_id")
-    h_rename.add_argument("title")
+    h_rename.add_argument("title", nargs="?")
+    h_rename.add_argument(
+        "--title-stdin", action="store_true",
+        help="ler o título pelo stdin para não expô-lo nos argumentos do processo",
+    )
     h_rename.add_argument("--storage-dir", type=Path)
     h_rename.add_argument("--history-db", type=Path)
 
@@ -341,8 +345,15 @@ def _cmd_history(args: argparse.Namespace) -> int:
             return 0
 
         if args.history_command == "rename":
+            if args.title_stdin and args.title is not None:
+                print("Use um título posicional OU --title-stdin.", file=sys.stderr)
+                return 2
+            title = sys.stdin.read() if args.title_stdin else args.title
+            if title is None:
+                print("Informe o título ou use --title-stdin.", file=sys.stderr)
+                return 2
             try:
-                conv = store.rename(args.conversation_id, profile_id, args.title)
+                conv = store.rename(args.conversation_id, profile_id, title)
             except (KeyError, ValueError) as exc:
                 print(str(exc), file=sys.stderr)
                 return 3
