@@ -27,11 +27,14 @@
   "panel.attach": "Anexar arquivo",
   "panel.attachTitle": "Escolher arquivos para o Ryoku",
   "panel.attachFilterDocs": "Documentos e código",
+  "panel.attachFilterImages": "Imagens",
   "panel.attachFilterAll": "Todos os arquivos",
   "panel.attachInspecting": "Validando anexo…",
   "panel.attachError": "Não foi possível anexar o arquivo.",
   "panel.attachLimit": "Limite de anexos por mensagem atingido.",
   "panel.attachRemove": "Remover anexo",
   "panel.attachTruncated": "truncado",
-  "panel.attachments": "anexos"
+  "panel.attachments": "anexos",
+  "panel.visionUnavailable": "Análise de imagens indisponível neste backend (SIWC só texto).",
+  "panel.visionUnavailableShort": "sem visão"
 }

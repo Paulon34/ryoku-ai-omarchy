@@ -264,15 +264,117 @@ def _extract_pdf(path: Path) -> tuple[str, str | None]:
     )
 
 
+def vision_backend_enabled() -> bool:
+    """Opt-in explícito. Padrão: desligado (SIWC atual é só texto)."""
+    return os.environ.get("RYOKU_VISION_BACKEND", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "ollama",
+    }
+
+
+def vision_status() -> dict[str, Any]:
+    enabled = vision_backend_enabled()
+    return {
+        "vision_available": False,  # nenhum backend multimodal ligado nesta build
+        "siwc_text_only": True,
+        "opt_in_env": "RYOKU_VISION_BACKEND",
+        "opt_in_set": enabled,
+        "message": (
+            "Análise de imagens indisponível: @siwc/local aceita somente texto. "
+            "Não há backend multimodal opt-in ativo nesta build. "
+            "Não baixe modelos locais sem verificar RAM/VRAM/disco e autorização."
+        ),
+    }
+
+
+def clipboard_image_dir() -> Path:
+    path = default_state_dir() / "clipboard-images"
+    path.mkdir(parents=True, exist_ok=True)
+    os.chmod(path, 0o700)
+    return path
+
+
+def save_clipboard_image_once() -> Path:
+    """Captura única da imagem do clipboard (sem monitoramento contínuo)."""
+    targets: list[list[str]] = []
+    if shutil.which("wl-paste"):
+        targets.append(["wl-paste", "-t", "image/png"])
+        targets.append(["wl-paste", "-t", "image/jpeg"])
+    if shutil.which("xclip"):
+        targets.append(["xclip", "-selection", "clipboard", "-t", "image/png", "-o"])
+    if not targets:
+        raise AttachmentError(
+            "clipboard_tool_missing",
+            "Nenhum wl-paste/xclip disponível para ler imagem do clipboard.",
+        )
+    last_error = "clipboard sem imagem"
+    for cmd in targets:
+        try:
+            completed = subprocess.run(cmd, check=False, capture_output=True, timeout=5)
+        except OSError as exc:
+            last_error = str(exc)
+            continue
+        if completed.returncode != 0 or not completed.stdout:
+            last_error = (completed.stderr or b"").decode("utf-8", errors="replace")[:160] or last_error
+            continue
+        data = completed.stdout
+        if len(data) > max_file_bytes():
+            raise AttachmentError("too_large", "Imagem do clipboard excede o limite configurado.")
+        ext = ".png" if data[:8] == b"\x89PNG\r\n\x1a\n" or "png" in cmd[-1] else ".jpg"
+        if data[:3] == b"\xff\xd8\xff":
+            ext = ".jpg"
+        if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            ext = ".webp"
+        target = clipboard_image_dir() / f"paste-{uuid.uuid4().hex}{ext}"
+        target.write_bytes(data)
+        os.chmod(target, 0o600)
+        return target
+    raise AttachmentError("clipboard_empty", f"Nenhuma imagem no clipboard ({last_error}).")
+
+
+def inspect_file(path: str | Path) -> dict[str, Any]:
+    """Metadados para a UI: imagens entram como prévia, sem fingir visão."""
+    resolved = validate_source_path(path)
+    ext = resolved.suffix.lower()
+    if ext in IMAGE_EXTENSIONS:
+        status = vision_status()
+        return {
+            "id": str(uuid.uuid4()),
+            "filename": resolved.name,
+            "path": str(resolved),
+            "extension": ext,
+            "size_bytes": resolved.stat().st_size,
+            "mime_hint": _mime_hint(ext),
+            "truncated": False,
+            "warning": status["message"],
+            "char_count": 0,
+            "preview": "",
+            "kind": "image",
+            "vision_available": bool(status["vision_available"]),
+        }
+    item = extract_file(resolved)
+    data = item.to_public_dict()
+    data["kind"] = "document"
+    data["vision_available"] = False
+    return data
+
+
+def inspect_many(paths: list[str]) -> list[dict[str, Any]]:
+    if not paths:
+        return []
+    if len(paths) > max_files():
+        raise AttachmentError("too_many", f"Máximo de {max_files()} anexos por mensagem.")
+    return [inspect_file(p) for p in paths]
+
+
 def extract_file(path: str | Path) -> ExtractedAttachment:
     resolved = validate_source_path(path)
     ext = resolved.suffix.lower()
     if ext in IMAGE_EXTENSIONS:
-        raise AttachmentError(
-            "vision_unavailable",
-            "Imagens/screenshots ainda não são analisáveis pelo SIWC atual "
-            "(@siwc/local só aceita texto). Fase 2 depende de SDK/backend compatível.",
-        )
+        status = vision_status()
+        raise AttachmentError("vision_unavailable", str(status["message"]))
     if ext in PDF_EXTENSIONS:
         text, warning = _extract_pdf(resolved)
         mime = "application/pdf"

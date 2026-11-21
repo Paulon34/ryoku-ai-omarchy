@@ -31,6 +31,7 @@ Panel {
   property string streamBuffer: ""
   property string pendingPrompt: ""
   property string pendingInspect: ""
+  property string clipboardFallbackText: ""
   property var pendingAttachments: []
   property bool loggedIn: true
 
@@ -92,6 +93,24 @@ Panel {
     if (root.busy || root.renameBusy || !root.loggedIn)
       return
     fileDialog.open()
+  }
+
+  function pasteClipboardImage() {
+    if (root.busy || root.renameBusy || !root.loggedIn)
+      return
+    if (root.pendingAttachments.length >= root.maxPendingAttachments) {
+      root.statusLine = strings.t("panel.attachLimit")
+      return
+    }
+    // Guarda texto do clipboard para fallback se não houver imagem (Ctrl+V).
+    try {
+      root.clipboardFallbackText = Qt.application.clipboard ? String(Qt.application.clipboard.text || "") : ""
+    } catch (e) {
+      root.clipboardFallbackText = ""
+    }
+    root.statusLine = strings.t("panel.attachInspecting")
+    pasteProc.command = [root.ryokuBin, "attach", "paste-image", "--json"]
+    pasteProc.running = true
   }
 
   function queueAttachments(paths) {
@@ -485,12 +504,56 @@ Panel {
     }
   }
 
+  Process {
+    id: pasteProc
+    running: false
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var raw = String(this.text || "").trim()
+        if (raw === "")
+          return
+        var obj
+        try {
+          obj = JSON.parse(raw)
+        } catch (e) {
+          root.statusLine = strings.t("panel.attachError")
+          return
+        }
+        if (!obj.ok) {
+          var code = (obj.error && obj.error.code) ? String(obj.error.code) : ""
+          if (code === "clipboard_empty" || code === "clipboard_tool_missing") {
+            if (root.clipboardFallbackText !== "") {
+              root.draft = String(root.draft || "") + root.clipboardFallbackText
+              root.clipboardFallbackText = ""
+              root.statusLine = ""
+              return
+            }
+          }
+          var msg = (obj.error && obj.error.message) ? String(obj.error.message) : strings.t("panel.attachError")
+          root.statusLine = msg
+          return
+        }
+        root.clipboardFallbackText = ""
+        root.mergeInspected(obj.attachments || [])
+        if (obj.vision && obj.vision.message)
+          root.statusLine = String(obj.vision.message)
+        else if (obj.attachments && obj.attachments.length && obj.attachments[0].warning)
+          root.statusLine = String(obj.attachments[0].warning)
+      }
+    }
+    onExited: function (exitCode, exitStatus) {
+      if (exitCode !== 0 && root.statusLine === strings.t("panel.attachInspecting"))
+        root.statusLine = strings.t("panel.visionUnavailable")
+    }
+  }
+
   FileDialog {
     id: fileDialog
     title: strings.t("panel.attachTitle")
     fileMode: FileDialog.OpenFiles
     nameFilters: [
       strings.t("panel.attachFilterDocs") + " (*.txt *.md *.markdown *.log *.json *.csv *.tsv *.py *.js *.ts *.tsx *.jsx *.rs *.go *.java *.c *.h *.cpp *.hpp *.sh *.toml *.yaml *.yml *.xml *.html *.css *.sql *.qml *.pdf)",
+      strings.t("panel.attachFilterImages") + " (*.png *.jpg *.jpeg *.webp)",
       strings.t("panel.attachFilterAll") + " (*)"
     ]
     onAccepted: {
@@ -964,6 +1027,16 @@ Panel {
               RowLayout {
                 spacing: Style.space(4)
 
+                Image {
+                  visible: String(modelData.kind || "") === "image"
+                  source: modelData.path ? ("file://" + String(modelData.path)) : ""
+                  sourceSize.width: Style.space(36)
+                  sourceSize.height: Style.space(36)
+                  fillMode: Image.PreserveAspectCrop
+                  Layout.preferredWidth: Style.space(36)
+                  Layout.preferredHeight: Style.space(36)
+                }
+
                 Text {
                   textFormat: Text.PlainText
                   color: theme.gold
@@ -973,7 +1046,10 @@ Panel {
                     var ext = String(modelData.extension || "").replace(".", "").toUpperCase()
                     var size = root.formatBytes(modelData.size_bytes)
                     var mark = modelData.truncated ? " · " + strings.t("panel.attachTruncated") : ""
-                    return name + " · " + ext + " · " + size + mark
+                    var vision = (String(modelData.kind || "") === "image" && !modelData.vision_available)
+                        ? " · " + strings.t("panel.visionUnavailableShort")
+                        : ""
+                    return name + " · " + ext + " · " + size + mark + vision
                   }
                 }
 
@@ -1031,6 +1107,14 @@ Panel {
               Keys.onEscapePressed: function (event) {
                 event.accepted = true
                 root.close()
+              }
+              Keys.onPressed: function (event) {
+                if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_V) {
+                  // Captura única — não monitora clipboard continuamente.
+                  event.accepted = true
+                  root.pasteClipboardImage()
+                  return
+                }
               }
               Keys.onReturnPressed: function (event) {
                 if (event.modifiers & Qt.ShiftModifier) {
