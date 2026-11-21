@@ -4,10 +4,16 @@ from __future__ import annotations
 
 import json
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
+from .attachments import (
+    AttachmentError,
+    ExtractedAttachment,
+    extract_many,
+    format_attachments_for_prompt,
+)
 from .history import (
     DEFAULT_CONTEXT_CHAR_BUDGET,
     HistoryStore,
@@ -65,19 +71,33 @@ def run_turn(
     store: HistoryStore,
     *,
     conversation_id: str,
+    profile_id: str,
     model: str,
     user_text: str,
+    attachments: Sequence[ExtractedAttachment] | None = None,
     on_delta: Callable[[str], None] | None = None,
     jsonl: bool = False,
 ) -> str:
+    attached = list(attachments or [])
+    composed = format_attachments_for_prompt(attached, user_text)
     prior = store.list_messages(conversation_id)
-    window = build_context_window(prior, budget=DEFAULT_CONTEXT_CHAR_BUDGET)
+    # Reserva orçamento para o turno atual (anexos + pergunta).
+    reserve = min(len(composed) + 1000, DEFAULT_CONTEXT_CHAR_BUDGET // 2)
+    window = build_context_window(
+        prior,
+        budget=max(8_000, DEFAULT_CONTEXT_CHAR_BUDGET - reserve),
+    )
     if window.truncated and not jsonl:
         sys.stderr.write(
             f"Aviso: contexto truncado — {window.omitted} mensagem(ns) antiga(s) "
             f"fora do orçamento de {window.budget} caracteres.\n"
         )
-    input_messages = [*window.messages, {"role": "user", "content": user_text}]
+    for item in attached:
+        if item.truncated or item.warning:
+            note = item.warning or "truncado"
+            if not jsonl:
+                sys.stderr.write(f"Anexo {item.filename}: {note}\n")
+    input_messages = [*window.messages, {"role": "user", "content": composed}]
     if jsonl:
         emit_jsonl(
             "start",
@@ -85,6 +105,7 @@ def run_turn(
             model=model,
             truncated=window.truncated,
             omitted=window.omitted,
+            attachments=[item.to_public_dict() for item in attached],
         )
     collected: list[str] = []
 
@@ -94,6 +115,11 @@ def run_turn(
             emit_jsonl("delta", text=delta)
         elif on_delta:
             on_delta(delta)
+
+    display_user = user_text
+    if attached:
+        names = ", ".join(item.filename for item in attached)
+        display_user = f"{user_text}\n\n[anexos: {names}]"
 
     try:
         text = bridge.chat_stream(model=model, input=input_messages, on_delta=capture)
@@ -106,11 +132,13 @@ def run_turn(
         if partial:
             store.append_turn(
                 conversation_id,
-                user_text=user_text,
+                user_text=display_user,
                 assistant_text=partial,
                 status="partial",
                 model=model,
                 title_if_empty=suggest_title(user_text),
+                profile_id=profile_id,
+                attachments=attached,
             )
         if jsonl:
             emit_jsonl("error", code=exc.code, message=exc.message, retryable=exc.retryable)
@@ -119,11 +147,13 @@ def run_turn(
     final = text or "".join(collected)
     store.append_turn(
         conversation_id,
-        user_text=user_text,
+        user_text=display_user,
         assistant_text=final,
         status="complete",
         model=model,
         title_if_empty=suggest_title(user_text),
+        profile_id=profile_id,
+        attachments=attached,
     )
     if jsonl:
         emit_jsonl("done", conversation_id=conversation_id, text=final)
@@ -135,6 +165,7 @@ def run_chat_repl(
     *,
     model: str | None = None,
     one_shot: str | None = None,
+    attachment_paths: Sequence[str] | None = None,
     conversation_id: str | None = None,
     create_new: bool = False,
     jsonl: bool = False,
@@ -182,7 +213,15 @@ def run_chat_repl(
             out(f"Conversa: {conv.id} — {conv.title}\n")
             out("Histórico local persistente. Ctrl+C ou linha vazia para sair.\n\n")
 
-        def turn(prompt: str) -> None:
+        def turn(prompt: str, paths: Sequence[str] | None = None) -> None:
+            try:
+                extracted = extract_many(list(paths or []))
+            except AttachmentError as exc:
+                if jsonl:
+                    emit_jsonl("error", code=exc.code, message=exc.message)
+                else:
+                    out(f"Anexo: {exc.message}\n")
+                raise
             if not jsonl:
                 out("Ryoku: ")
             try:
@@ -190,8 +229,10 @@ def run_chat_repl(
                     bridge,
                     store,
                     conversation_id=conv.id,
+                    profile_id=profile_id,
                     model=selected,
                     user_text=prompt,
+                    attachments=extracted,
                     on_delta=(None if jsonl else (lambda delta: out(delta))),
                     jsonl=jsonl,
                 )
@@ -204,7 +245,9 @@ def run_chat_repl(
 
         if one_shot is not None:
             try:
-                turn(one_shot)
+                turn(one_shot, attachment_paths)
+            except AttachmentError:
+                return 1
             except SiwcError as exc:
                 if not jsonl:
                     out(f"\nErro [{exc.code}]: {exc.message}\n")
@@ -229,7 +272,9 @@ def run_chat_repl(
                     if not jsonl:
                         out("Saindo.\n")
                     return 0
-                turn(prompt)
+                turn(prompt, None)
+            except AttachmentError:
+                continue
             except SiwcError as exc:
                 if not jsonl:
                     out(f"\nErro [{exc.code}]: {exc.message}\n")

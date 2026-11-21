@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from . import __version__
+from .attachments import AttachmentError, extract_many, parse_request_stdin
 from .chat import run_chat_repl
 from .diagnostics import collect, pretty
 from .history import HistoryStore, default_db_path
@@ -62,6 +63,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="ler a mensagem completa de stdin (recomendado para o painel Quickshell)",
     )
+    chat.add_argument(
+        "--request-stdin",
+        action="store_true",
+        help="ler JSON {prompt,attachments:[{path}]} do stdin (anexos sem argv)",
+    )
     chat.add_argument("--new", action="store_true", help="criar nova conversa")
     chat.add_argument("--conversation", help="retomar conversa pelo ID")
     chat.add_argument(
@@ -71,6 +77,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     chat.add_argument("--storage-dir", type=Path)
     chat.add_argument("--history-db", type=Path, help="caminho do SQLite de conversas")
+
+    attach = subs.add_parser("attach", help="inspecionar anexos locais (Fase 1: texto/PDF)")
+    attach_subs = attach.add_subparsers(dest="attach_command", required=True)
+    a_inspect = attach_subs.add_parser(
+        "inspect",
+        help="validar/extrair metadados; paths via JSON stdin {\"paths\":[...]}",
+    )
+    a_inspect.add_argument("--json", action="store_true", help="saída JSON (padrão para UI)")
 
     history = subs.add_parser("history", help="gerenciar conversas locais")
     history_subs = history.add_subparsers(dest="history_command", required=True)
@@ -265,6 +279,34 @@ def _cmd_models(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_attach(args: argparse.Namespace) -> int:
+    if args.attach_command != "inspect":
+        return 2
+    raw = sys.stdin.read()
+    try:
+        payload = json.loads(raw) if raw.strip() else {}
+    except json.JSONDecodeError as exc:
+        print(json.dumps({"ok": False, "error": {"code": "invalid_json", "message": str(exc)}}))
+        return 2
+    paths = payload.get("paths") if isinstance(payload, dict) else None
+    if not isinstance(paths, list):
+        print(json.dumps({"ok": False, "error": {"code": "invalid_request", "message": "Informe paths: []"}}))
+        return 2
+    try:
+        items = extract_many([str(p) for p in paths])
+    except AttachmentError as exc:
+        print(json.dumps({"ok": False, "error": {"code": exc.code, "message": exc.message}}))
+        return 1
+    print(
+        json.dumps(
+            {"ok": True, "attachments": [item.to_public_dict() for item in items]},
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0
+
+
 def _cmd_chat(args: argparse.Namespace) -> int:
     ready, reason = bridge_ready()
     if not ready:
@@ -278,7 +320,21 @@ def _cmd_chat(args: argparse.Namespace) -> int:
         return 3
 
     one_shot = args.prompt
-    if args.prompt_stdin:
+    attachment_paths: list[str] = []
+    if args.request_stdin and args.prompt_stdin:
+        print("Use --request-stdin OU --prompt-stdin.", file=sys.stderr)
+        return 2
+    if args.request_stdin:
+        raw = sys.stdin.read()
+        try:
+            one_shot, attachment_paths = parse_request_stdin(raw)
+        except AttachmentError as exc:
+            if args.jsonl:
+                print(json.dumps({"event": "error", "code": exc.code, "message": exc.message}))
+            else:
+                print(exc.message, file=sys.stderr)
+            return 2
+    elif args.prompt_stdin:
         one_shot = sys.stdin.read()
         if not one_shot.strip():
             print("stdin vazio.", file=sys.stderr)
@@ -290,6 +346,7 @@ def _cmd_chat(args: argparse.Namespace) -> int:
                 bridge,
                 model=args.model,
                 one_shot=one_shot,
+                attachment_paths=attachment_paths,
                 conversation_id=args.conversation,
                 create_new=bool(args.new),
                 jsonl=bool(args.jsonl),
@@ -396,7 +453,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"緑 RYOKU AI v{__version__}")
         print("Assistente de terminal para Omarchy / Arch Linux")
         print(
-            "Comandos: ryoku doctor | status | login | logout | models | chat | history"
+            "Comandos: ryoku doctor | status | login | logout | models | chat | attach | history"
         )
         print("Dica: `ryoku chat` retoma a conversa mais recente; `ryoku chat --new` cria outra.")
         return 0
@@ -415,6 +472,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _cmd_logout(args)
     if args.command == "models":
         return _cmd_models(args)
+    if args.command == "attach":
+        return _cmd_attach(args)
     if args.command == "chat":
         return _cmd_chat(args)
     if args.command == "history":

@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
@@ -29,9 +30,12 @@ Panel {
   property string pendingRename: ""
   property string streamBuffer: ""
   property string pendingPrompt: ""
+  property string pendingInspect: ""
+  property var pendingAttachments: []
   property bool loggedIn: true
 
   readonly property string ryokuBin: "ryoku"
+  readonly property int maxPendingAttachments: 5
 
   Theme {
     id: theme
@@ -51,6 +55,85 @@ Panel {
     root.confirmDelete = false
     root.renaming = false
     root.controller.hide()
+  }
+
+  function urlToPath(url) {
+    var s = String(url || "")
+    if (s.indexOf("file://") === 0) {
+      s = decodeURIComponent(s.substring(7))
+      if (s.indexOf("//") === 0)
+        s = s.substring(1)
+    }
+    return s
+  }
+
+  function formatBytes(n) {
+    var v = Number(n) || 0
+    if (v < 1024)
+      return v + " B"
+    if (v < 1024 * 1024)
+      return Math.round(v / 102.4) / 10 + " KB"
+    return Math.round(v / (1024 * 102.4)) / 10 + " MB"
+  }
+
+  function removeAttachment(index) {
+    var next = root.pendingAttachments.slice()
+    if (index < 0 || index >= next.length)
+      return
+    next.splice(index, 1)
+    root.pendingAttachments = next
+  }
+
+  function clearAttachments() {
+    root.pendingAttachments = []
+  }
+
+  function openFilePicker() {
+    if (root.busy || root.renameBusy || !root.loggedIn)
+      return
+    fileDialog.open()
+  }
+
+  function queueAttachments(paths) {
+    if (!paths || paths.length === 0)
+      return
+    var room = root.maxPendingAttachments - root.pendingAttachments.length
+    if (room <= 0) {
+      root.statusLine = strings.t("panel.attachLimit")
+      return
+    }
+    var batch = paths.slice(0, room)
+    root.statusLine = strings.t("panel.attachInspecting")
+    // Caminhos via stdin JSON — nunca o conteúdo do arquivo no argv.
+    root.pendingInspect = JSON.stringify({
+      "paths": batch
+    }) + "\n"
+    inspectProc.command = [root.ryokuBin, "attach", "inspect", "--json"]
+    inspectProc.stdinEnabled = true
+    inspectProc.running = true
+  }
+
+  function mergeInspected(items) {
+    var next = root.pendingAttachments.slice()
+    for (var i = 0; i < items.length; i++) {
+      if (next.length >= root.maxPendingAttachments)
+        break
+      var item = items[i]
+      if (!item || !item.path)
+        continue
+      var dup = false
+      for (var j = 0; j < next.length; j++) {
+        if (String(next[j].path) === String(item.path)) {
+          dup = true
+          break
+        }
+      }
+      if (!dup)
+        next.push(item)
+    }
+    root.pendingAttachments = next
+    if (root.pendingAttachments.length > 0)
+      root.statusLine = ""
   }
 
   function switchPanel(direction) {
@@ -136,9 +219,16 @@ Panel {
     root.busy = true
     root.streamBuffer = ""
     root.statusLine = strings.t("panel.streaming")
+    var label = text
+    if (root.pendingAttachments.length > 0) {
+      var names = []
+      for (var i = 0; i < root.pendingAttachments.length; i++)
+        names.push(String(root.pendingAttachments[i].filename || ""))
+      label = text + "\n[" + strings.t("panel.attachments") + ": " + names.join(", ") + "]"
+    }
     root.messages = root.messages.concat([{
           "role": "user",
-          "content": text,
+          "content": label,
           "status": "complete"
         }, {
           "role": "assistant",
@@ -146,9 +236,21 @@ Panel {
           "status": "partial"
         }])
     root.draft = ""
-    root.pendingPrompt = text + "\n"
 
-    var cmd = [root.ryokuBin, "chat", "--jsonl", "--prompt-stdin"]
+    var paths = []
+    for (var j = 0; j < root.pendingAttachments.length; j++)
+      paths.push(String(root.pendingAttachments[j].path || ""))
+    root.pendingPrompt = JSON.stringify({
+      "prompt": text,
+      "attachments": paths.map(function (p) {
+        return {
+          "path": p
+        }
+      })
+    }) + "\n"
+    root.clearAttachments()
+
+    var cmd = [root.ryokuBin, "chat", "--jsonl", "--request-stdin"]
     if (root.activeId !== "")
       cmd = cmd.concat(["--conversation", root.activeId])
     else
@@ -156,7 +258,7 @@ Panel {
     chatProc.command = cmd
     chatProc.stdinEnabled = true
     chatProc.running = true
-    // Prompt só será escrito quando o processo confirmar que iniciou.
+    // Request JSON só é escrito quando o processo confirmar que iniciou.
   }
 
   function handleChatLine(line) {
@@ -330,6 +432,73 @@ Panel {
         root.messages = []
         root.reloadAll()
       }
+    }
+  }
+
+  Process {
+    id: inspectProc
+    running: false
+    stdinEnabled: true
+    onStarted: {
+      inspectProc.write(root.pendingInspect)
+      root.pendingInspect = ""
+      inspectProc.stdinEnabled = false
+    }
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var raw = String(this.text || "").trim()
+        if (raw === "")
+          return
+        var obj
+        try {
+          obj = JSON.parse(raw)
+        } catch (e) {
+          root.statusLine = strings.t("panel.attachError")
+          return
+        }
+        if (!obj.ok) {
+          var msg = (obj.error && obj.error.message) ? String(obj.error.message) : strings.t("panel.attachError")
+          root.statusLine = msg
+          return
+        }
+        root.mergeInspected(obj.attachments || [])
+        if (obj.attachments && obj.attachments.length) {
+          for (var i = 0; i < obj.attachments.length; i++) {
+            if (obj.attachments[i].warning) {
+              root.statusLine = String(obj.attachments[i].warning)
+              break
+            }
+          }
+        }
+      }
+    }
+    stderr: StdioCollector {
+      onStreamFinished: {
+        var detail = String(this.text || "").trim()
+        if (detail !== "")
+          root.statusLine = strings.t("panel.error") + ": " + detail
+      }
+    }
+    onExited: function (exitCode, exitStatus) {
+      if (exitCode !== 0 && root.statusLine === strings.t("panel.attachInspecting"))
+        root.statusLine = strings.t("panel.attachError")
+    }
+  }
+
+  FileDialog {
+    id: fileDialog
+    title: strings.t("panel.attachTitle")
+    fileMode: FileDialog.OpenFiles
+    nameFilters: [
+      strings.t("panel.attachFilterDocs") + " (*.txt *.md *.markdown *.log *.json *.csv *.tsv *.py *.js *.ts *.tsx *.jsx *.rs *.go *.java *.c *.h *.cpp *.hpp *.sh *.toml *.yaml *.yml *.xml *.html *.css *.sql *.qml *.pdf)",
+      strings.t("panel.attachFilterAll") + " (*)"
+    ]
+    onAccepted: {
+      var urls = fileDialog.selectedFiles
+      var paths = []
+      for (var i = 0; i < urls.length; i++)
+        paths.push(root.urlToPath(urls[i]))
+      root.queueAttachments(paths)
     }
   }
 
@@ -773,11 +942,53 @@ Panel {
             }
           }
 
-          // ---- Composer inferior — faixa flat + linha divisória
+          // ---- Composer inferior — faixa de anexos + linha + input
           Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: theme.dividerWidth
             color: theme.divider
+          }
+
+          Flow {
+            Layout.fillWidth: true
+            Layout.leftMargin: Style.space(12)
+            Layout.rightMargin: Style.space(12)
+            Layout.topMargin: Style.space(6)
+            Layout.bottomMargin: Style.space(2)
+            spacing: Style.space(6)
+            visible: root.pendingAttachments.length > 0
+
+            Repeater {
+              model: root.pendingAttachments
+
+              RowLayout {
+                spacing: Style.space(4)
+
+                Text {
+                  textFormat: Text.PlainText
+                  color: theme.gold
+                  font.pixelSize: Style.font.caption
+                  text: {
+                    var name = String(modelData.filename || "")
+                    var ext = String(modelData.extension || "").replace(".", "").toUpperCase()
+                    var size = root.formatBytes(modelData.size_bytes)
+                    var mark = modelData.truncated ? " · " + strings.t("panel.attachTruncated") : ""
+                    return name + " · " + ext + " · " + size + mark
+                  }
+                }
+
+                Button {
+                  text: "×"
+                  tooltipText: strings.t("panel.attachRemove")
+                  bordered: false
+                  foreground: theme.danger
+                  accent: theme.danger
+                  background: "transparent"
+                  enabled: !root.busy
+                  onClicked: root.removeAttachment(index)
+                }
+              }
+            }
           }
 
           RowLayout {
@@ -787,6 +998,18 @@ Panel {
             Layout.leftMargin: Style.space(12)
             Layout.rightMargin: Style.space(10)
             spacing: Style.space(8)
+
+            Button {
+              Layout.alignment: Qt.AlignVCenter
+              text: "+"
+              tooltipText: strings.t("panel.attach")
+              bordered: true
+              foreground: enabled ? theme.gold : theme.textMuted
+              accent: theme.gold
+              background: "transparent"
+              enabled: !root.busy && !root.renameBusy && root.loggedIn
+              onClicked: root.openFilePicker()
+            }
 
             TextField {
               id: input

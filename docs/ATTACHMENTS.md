@@ -1,44 +1,79 @@
-# Anexos no Ryoku AI — proposta técnica para próximas sprints
+# Anexos no Ryoku AI
 
-**Status:** design/roadmap, NÃO implementado. O envio atual em `Panel.qml` e `siwc_bridge/src/bridge.mjs` aceita **somente texto**. Não mostrar como recurso pronto na UI nem afirmar ter analisado uma imagem sem tê-la enviado ao modelo.
+**Status Fase 1 (texto/PDF):** implementado nesta branch (`feat/chat-file-attachments`).  
+**Status Fase 2 (imagens/visão):** bloqueado — `@siwc/local` vendorizado aceita somente `content: string`.
 
-## Experiência desejada
+Não afirmar análise visual sem backend compatível comprovado no hardware (PASS_REAL).
 
-- Botão `+` ao lado da caixa de mensagem: escolher imagem, print ou documento local.
-- Colar print via Ctrl+V e mostrar pré-visualização com nome/tipo/tamanho e opção de remover antes de enviar.
-- Perguntas de exemplo: "Analise esse erro do Omarchy e me diga como corrigir", "Resuma o PDF", "Explique este log".
-- O histórico local registra os anexos associados à conversa e deixa claro quando o conteúdo foi truncado ou não pôde ser lido.
-- Não executar comandos ou alterações no sistema automaticamente a partir de texto em documentos/prints.
+## Fase 1 — o que funciona
 
-## Etapa A: arquivos de texto/documentos
+- Botão `+` no painel → `QtQuick.Dialogs.FileDialog` (portal nativo no Omarchy/Wayland).
+- Formatos: TXT, MD, LOG, JSON, CSV/TSV, código comum e PDF com texto extraível.
+- Prévia compacta (nome · formato · tamanho · truncado) acima do composer; remoção antes do envio.
+- Envio via `ryoku chat --request-stdin` com JSON `{prompt, attachments:[{path}]}` — **conteúdo nunca vai no argv**.
+- `ryoku attach inspect` valida caminhos via stdin JSON `{paths:[...]}` e devolve metadados (sem dump completo).
+- Extração local; PDF sem texto → erro claro (`pdf_no_text`), sem resumo fictício.
+- Histórico: metadados no SQLite; texto em `~/.local/state/ryoku-ai/attachment-text/<id>.txt` (0600); exclusão junto da conversa; isolamento por perfil; reuso no contexto.
 
-1. Criar seleção de arquivos via diálogo Qt/portal no Quickshell; nenhum caminho de usuário é enviado para shell interpeter/argv. CLI local recebe um protocolo com dados por stdin.
-2. Validar MIME real, tamanho máximo configurável, contagem de arquivos, acesso permitido pelo usuário, symlinks e erros de permissão. Nunca varrer diretórios inteiros.
-3. Extrair localmente TXT/MD/LOG/JSON/CSV/código com limites, UTF-8 e avisos de truncamento. PDF com biblioteca de extração instalada e tratamento de páginas sem texto; não fingir extração de páginas escaneadas.
-4. Construir contexto com texto extraído e rótulos de origem/página. Tratar conteúdo de anexos como dados não confiáveis e não como instruções do app. Persistência local controlada por usuário.
-5. Testes de arquivo vazio, malicioso, enorme, unicode, múltiplos arquivos, exclusão e troca de perfil.
+### CLI
 
-## Etapa B: screenshots/imagens e visão de verdade
+```bash
+# Inspecionar (UI / debug)
+printf '%s' '{"paths":["/abs/path/nota.md"]}' | ryoku attach inspect --json
 
-1. Arquivos PNG/JPEG/WebP e screenshot obtido via seleção ou ferramenta existente, com confirmação explícita de envio.
-2. **Limitação confirmada na versão atualmente vendorizada:** `vendor/siwc-local/src/types.ts` declara `ResponseInputMessage.content: string` e `vendor/siwc-local/src/responses.ts` rejeita conteúdo não textual. Portanto, `streamResponse` do SDK atual **não aceita imagens**; não habilitar `input_image` por simples mudança no QML/bridge.
-3. Para visão real: (a) aguardar suporte multimodal em versão oficial compatível de `@siwc/local`; ou (b) adicionar um backend local de visão opt-in (por exemplo, modelo compatível no Ollama) somente após medir hardware/recursos e obter autorização do usuário. Não usar tokens/rotas alternativas fora da integração suportada.
-4. Quando houver suporte, codificar imagem em formato aceito e enviar conteúdo binário real ao modelo (não apenas caminho, nome ou texto inventado). Streaming, limites, tamanho e erros devem ser explícitos.
-5. Se a modalidade não for suportada, mostrar "análise de imagens indisponível neste modelo/conta" em vez de simular visão ou trocar de provedor sem autorização.
-6. Teste PASS_REAL com print contendo um erro visual que **não apareça no prompt textual** e checar se o diagnóstico menciona detalhes da imagem.
+# Chat com anexos (painel usa isto)
+printf '%s' '{"prompt":"Resuma","attachments":[{"path":"/abs/path/nota.md"}]}' \
+  | ryoku chat --jsonl --request-stdin --new
+```
 
-## Privacidade e compatibilidade
+O REPL/CLI sem anexos permanece: `ryoku chat` e `--prompt-stdin` / `-p`.
 
-- Tokens apenas no bridge seguro; não armazenar em QML, stdout, logs ou GitHub.
-- Anexos persistem localmente apenas conforme política definida e com exclusão vinculada à conversa; nenhum upload escondido.
-- NÃO usar a Files Upload API só por existir no ChatGPT web: o login SIWC do projeto é integração diferente e os recursos disponíveis devem ser verificados.
-- Avaliar separadamente licenças de extratores e do DevKit para distribuição open source.
-- Preservar bandeja, Google Agenda, Resonance, histórico SQLite e rollback do plugin.
+### Limites (env)
 
-## Critérios para marcar implementado
+| Variável | Padrão |
+|----------|--------|
+| `RYOKU_ATTACH_MAX_FILES` | 5 |
+| `RYOKU_ATTACH_MAX_BYTES` | 2097152 (2 MiB) |
+| `RYOKU_ATTACH_MAX_CHARS` | 80000 |
+| `RYOKU_ATTACH_MAX_TOTAL_CHARS` | 100000 |
 
-- [ ] Texto/documento: extração real e resumo com referência do conteúdo do arquivo
-- [ ] Imagem: conteúdo real enviado ao modelo com capacidade de visão comprovada
-- [ ] Ctrl+V, seletor, prévia, remover anexo, erro claro por formato/limite
-- [ ] Histórico e isolamento por perfil; logout/rollback sem perda involuntária
-- [ ] CI verde; PASS_REAL no notebook (multi-monitor/escala) sem regressões
+PDF opcional: `pip install 'ryoku-ai-omarchy[pdf]'` ou `pdftotext` (poppler).
+
+## Fase 2 — imagens (não liberar sem prova)
+
+- PNG/JPEG/WebP, Ctrl+V, miniatura, screenshot: UI pode ser esboçada, mas análise exige SDK/backend multimodal.
+- Bloqueio atual: `vendor/siwc-local` tipa e valida entrada textual; Responses API via SIWC **não** implica visão automática.
+- Opção futura: Ollama multimodal **opt-in**, só após medir RAM/VRAM/disco e autorização explícita.
+- Até lá, anexar imagem retorna `vision_unavailable` com mensagem clara na UI.
+
+## Privacidade
+
+- Só arquivos escolhidos explicitamente; sem monitor contínuo de clipboard.
+- Anexos tratados como dados não confiáveis no prompt (preâmbulo anti-instrução).
+- Sem upload silencioso; sem tokens/conteúdo em logs de depuração.
+- Symlinks, paths relativos, vazios, enormes e binários com NUL são rejeitados.
+
+## Testes
+
+```bash
+python -m unittest tests.test_attachments tests.test_history tests.test_cli -v
+```
+
+Cobertura Fase 1: válidos, vazios, enormes, Unicode, binário, symlink, extensão inválida, imagem bloqueada, truncamento, persistência/isolamento, `--request-stdin` / `attach inspect`.
+
+## Rollback
+
+```bash
+git checkout feat/chat-panel-visual-polish
+# ou reverter o merge da PR desta branch
+omarchy-refresh-omarchy-shell   # se o plugin já estiver instalado
+```
+
+## PASS_REAL (notebook)
+
+1. Selecionar arquivo pelo `+` e ver prévia; remover e reanexar.
+2. Perguntar sobre conteúdo real do arquivo e conferir a resposta.
+3. Histórico compartilhado terminal ↔ painel; apagar conversa remove texto em disco.
+4. Escala 1.25 / monitor externo; Nova, Atualizar, Renomear, Apagar, Enter, Esc.
+5. Bandeja, Google Agenda e Resonance intactos.
+6. **Não** marcar visão/imagem como OK sem teste com detalhe exclusivo no print.
