@@ -13,5 +13,10 @@
   "panel.streaming": "Transmitindo…",
   "panel.conversations": "Conversas",
   "panel.refresh": "Atualizar",
-  "panel.error": "Erro"
+  "panel.error": "Erro",
+  "panel.rename": "Renomear",
+  "panel.renamePlaceholder": "Novo título da conversa…",
+  "panel.renameSave": "Salvar",
+  "panel.renameCancel": "Cancelar",
+  "panel.renameEmpty": "O título não pode ficar vazio."
 }
