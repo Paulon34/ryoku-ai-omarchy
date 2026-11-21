@@ -10,7 +10,7 @@ Terminal primeiro · ChatGPT com consentimento · Segurança · Quickshell depoi
 
 </div>
 
-> **Pré-alpha v0.1:** o CLI e o diagnóstico somente leitura estão implementados. **O login e as conversas pelo ChatGPT ainda não estão implementados.** Não usa tokens de Codex nem chave de API.
+> **Pré-alpha v0.2 (Sprint 1):** CLI, diagnóstico e integração SIWC via `@siwc/local` pinado. **PASS_REAL do login no notebook ainda pendente** — não use em produção. Não usa tokens de Codex nem chave de API cobrada à parte.
 
 ## A ideia
 
@@ -19,53 +19,52 @@ Um comando `ryoku chat` para conversar naturalmente com um assistente via termin
 ## O que já funciona
 
 - `ryoku`: saudação e comandos disponíveis.
-- `ryoku doctor`: verifica Linux, família Arch e presença do CLI Omarchy, Hyprland e Quickshell, sem executar comandos externos.
-- `ryoku doctor --json`: mesmo diagnóstico em JSON, sem dados pessoais.
-- `ryoku status`: estado da implementação.
-- `ryoku chat`: avisa com transparência que o ChatGPT ainda não está conectado, sem fingir que respondeu.
+- `ryoku doctor`: verifica Linux, família Arch, ferramentas e prontidão do bridge SIWC, sem ler tokens.
+- `ryoku status`: estágio do projeto + sessão (identity vs `session.sharing`).
+- `ryoku login` / `logout`: Sign in with ChatGPT oficial (navegador, PKCE, keyring).
+- `ryoku models` / `ryoku chat`: descoberta de modelos e streaming após consentimento do plano.
 
 ## Como testar no Omarchy
 
-Python 3.11+; nenhuma dependência em tempo de execução:
+Python 3.11+ e, para login/chat, **Node.js 22+**, `npm`, `libsecret` (Secret Service ou KWallet):
 
 ```bash
 git clone https://github.com/Paulon34/ryoku-ai-omarchy.git
 cd ryoku-ai-omarchy
-PYTHONPATH=src python3 -m ryoku_ai doctor
-PYTHONPATH=src python3 -m ryoku_ai status
-```
-
-Se quiser disponibilizar o comando `ryoku`, instale em um ambiente virtual (sem `sudo`):
-
-```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .
+(cd siwc_bridge && npm install)
 .venv/bin/ryoku doctor
+.venv/bin/ryoku login
+.venv/bin/ryoku models
+.venv/bin/ryoku chat
 ```
 
-Testes: `.venv/bin/python -m unittest discover -s tests -v`.
+Diagnóstico sem Node continua possível: `PYTHONPATH=src python3 -m ryoku_ai doctor`.
+
+Testes mockados: `.venv/bin/python -m unittest discover -s tests -v`.
 
 ## Sobre ChatGPT Plus
 
-A assinatura Plus não cobre o uso normal da API OpenAI, cujo faturamento é separado. Porém, a OpenAI documenta **Sign in with ChatGPT para projetos open source locais**, permitindo pedidos de IA elegíveis com autorização específica e limites da conta. A disponibilidade e os escopos precisam ser verificados no login real; **esse fluxo não está funcionando neste projeto ainda**.
+A assinatura Plus **não** cobre o uso normal da API OpenAI (faturamento separado). O fluxo **Sign in with ChatGPT para OSS local** permite pedidos elegíveis com consentimento e limites da conta. Elegibilidade só se confirma no login real (`session.sharing`).
 
 - [Quickstart oficial](https://developers.openai.com/siwc/quickstart)
 - [Cookbook oficial](https://developers.openai.com/cookbook/articles/sign-in-with-chatgpt)
 - [Decisões de autenticação](docs/AUTH.md)
 
-A integração não herda automaticamente suas conversas nem memórias do ChatGPT. Não vamos extrair cookies, contas do Cursor ou tokens do Codex.
+Não extraímos cookies, contas do Cursor ou tokens do Codex. Conversas/memórias do ChatGPT não são herdadas.
 
 ## Princípios
 
-**Local-first.** Credenciais, quando implementadas, ficam protegidas pelo armazenamento seguro do sistema operacional, nunca no Git. Nenhum comando é executado no sistema sem propósito e autorização explícitos. Nenhuma alteração com `sudo` automático. Nenhum daemon permanente enquanto a V1 não justificar.
+**Local-first.** Credenciais no Secret Service/KWallet; arquivos de perfil criptografados; permissões `0700`. Falha fechada sem chaveiro. Nenhum `sudo` automático.
 
 ## Roteiro
 
-1. V0.1: CLI e diagnósticos (código presente; testes automatizados).
-2. V0.2: login oficial seguro e `ryoku chat` real.
+1. V0.1: CLI e diagnósticos.
+2. V0.2: login oficial seguro e `ryoku chat` (código nesta sprint; PASS_REAL pendente).
 3. V0.3: histórico local opcional e diagnósticos assistidos.
 4. V0.4: plugin Quickshell integrado à barra Omarchy.
 
-O [backlog para o Cursor](docs/CURSOR_TASKS.md) detalha cada etapa, sem afirmar que funções futuras já existem.
+O [backlog para o Cursor](docs/CURSOR_TASKS.md) detalha cada etapa.
 
-Código original sob **MIT**. Projeto independente, não afiliado à OpenAI ou aos mantenedores do Omarchy.
+Código original sob **MIT**. O vendor `@siwc/local` segue a **Noncommercial License** do DevKit OpenAI. Projeto independente, não afiliado à OpenAI ou aos mantenedores do Omarchy.

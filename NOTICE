@@ -1,0 +1,15 @@
+Ryoku AI Omarchy
+Copyright (c) Ryoku contributors
+Licensed under the MIT License (see LICENSE).
+
+This repository also includes a pinned copy of OpenAI's Sign in with ChatGPT
+DevKit package `@siwc/local` under vendor/siwc-local/, licensed under the
+Sign-in with ChatGPT DevKit Noncommercial License v1.0. See:
+
+  vendor/siwc-local/LICENSE
+  vendor/siwc-local/LICENSE.DEVKIT
+  vendor/siwc-local/PIN.txt
+
+Commercial use of OpenAI's Contribution requires a separate written agreement
+with OpenAI. The MIT license of Ryoku's original code does not expand rights
+in the DevKit Contribution.

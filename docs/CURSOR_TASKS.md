@@ -12,18 +12,19 @@ Construir uma interface de **conversa geral**, leve e local, aproveitando o Chat
 - [ ] Testar CLI no notebook Omarchy (PASS_REAL)
 
 ## Sprint 1 — autenticação oficial
-- [ ] Conferir a documentação SIWC/DevKit atual e a licença de redistribuição
-- [ ] Escolher empacotamento sustentável para SDK e backend seguro no Linux
-- [ ] Implementar `ryoku login`, `ryoku logout`, status da conta e seleção de perfil
-- [ ] Persistir host ID estável sem hardware ID; armazenamento em keyring/KWallet (sem fallback inseguro)
-- [ ] Verificar identity, `session.sharing`, modelos disponíveis, expirados/renovação/consentimento
-- [ ] Testes unitários com mocks; login real só pelo consentimento do usuário
+- [x] Conferir a documentação SIWC/DevKit atual e a licença de redistribuição
+- [x] Escolher empacotamento sustentável para SDK e backend seguro no Linux (`vendor/siwc-local` + `siwc_bridge` + keytar)
+- [x] Implementar `ryoku login`, `ryoku logout`, status da conta e seleção de perfil
+- [x] Persistir host ID estável sem hardware ID; armazenamento em keyring/KWallet (sem fallback inseguro)
+- [x] Verificar identity, `session.sharing`, modelos disponíveis, expirados/renovação/consentimento
+- [x] Testes unitários com mocks; login real só pelo consentimento do usuário
+- [ ] PASS_REAL do login no notebook (bloqueia merge da issue #2)
 
 ## Sprint 2 — conversa no terminal
-- [ ] Implementar `ryoku chat`, streaming, saída limpa com Ctrl+C
+- [x] Implementar `ryoku chat`, streaming, saída limpa com Ctrl+C (entregue junto da Sprint 1 / issue #2)
 - [ ] Histórico local **opcional**, sem expor prompt/senha em logs
-- [ ] Gerenciar limites de uso e erros sem criar cobrança inesperada
-- [ ] Sem chamar ferramentas do sistema sem permissão
+- [x] Gerenciar limites de uso e erros sem criar cobrança inesperada (erros do SDK; sem API key)
+- [x] Sem chamar ferramentas do sistema sem permissão
 
 ## Sprint 3 — integração com Omarchy
 - [ ] Plugin Quickshell opcional sem iniciar outro Quickshell
