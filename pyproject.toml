@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ryoku-ai-omarchy"
+version = "0.1.0"
+description = "Lightweight, privacy-first AI assistant foundation for Omarchy / Arch Linux"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Ryoku contributors"}]
+dependencies = []
+
+[project.scripts]
+ryoku = "ryoku_ai.cli:run"
+
+[tool.setuptools.packages.find]
+where = ["src"]
