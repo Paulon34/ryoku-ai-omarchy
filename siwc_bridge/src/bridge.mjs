@@ -139,8 +139,22 @@ async function handle(command) {
       if (typeof model !== "string" || !model) {
         throw new ChatGPTError("invalid_config", "Informe o modelo.");
       }
-      if (typeof input !== "string" || !input.trim()) {
-        throw new ChatGPTError("invalid_config", "Informe a mensagem.");
+      const inputOk =
+        (typeof input === "string" && input.trim()) ||
+        (Array.isArray(input) &&
+          input.length > 0 &&
+          input.every(
+            (item) =>
+              item &&
+              typeof item === "object" &&
+              ["user", "assistant", "developer"].includes(item.role) &&
+              typeof item.content === "string",
+          ));
+      if (!inputOk) {
+        throw new ChatGPTError(
+          "invalid_config",
+          "Informe a mensagem (texto) ou um array de mensagens user/assistant.",
+        );
       }
       const instructions =
         typeof args.instructions === "string" && args.instructions.trim()

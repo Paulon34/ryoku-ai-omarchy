@@ -1,11 +1,20 @@
-"""REPL de conversa via Responses API (plano ChatGPT autorizado)."""
+"""Conversa com histórico local persistente e contexto reenviado ao modelo."""
 
 from __future__ import annotations
 
+import json
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
+from .history import (
+    DEFAULT_CONTEXT_CHAR_BUDGET,
+    HistoryStore,
+    build_context_window,
+    default_db_path,
+    suggest_title,
+)
 from .siwc import SiwcBridge, SiwcError
 
 
@@ -29,79 +38,207 @@ def pick_model(bridge: SiwcBridge, requested: str | None) -> str:
     return str(first["slug"])
 
 
+def require_sharing_session(bridge: SiwcBridge) -> dict[str, Any]:
+    session = bridge.request("session")
+    if not isinstance(session, dict) or session.get("status") != "connected":
+        raise SiwcError("sign_in_required", "Não há sessão conectada. Rode: ryoku login")
+    if not session.get("sharing"):
+        raise SiwcError(
+            "sharing_not_enabled",
+            "Sessão autenticada sem consentimento do plano (session.sharing=false). "
+            "Rode: ryoku login --reconsent",
+        )
+    profile_id = session.get("profileId")
+    if not isinstance(profile_id, str) or not profile_id:
+        raise SiwcError("invalid_session", "Sessão sem profileId. Faça login novamente.")
+    return session
+
+
+def emit_jsonl(event: str, **fields: Any) -> None:
+    payload = {"event": event, **fields}
+    sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    sys.stdout.flush()
+
+
+def run_turn(
+    bridge: SiwcBridge,
+    store: HistoryStore,
+    *,
+    conversation_id: str,
+    model: str,
+    user_text: str,
+    on_delta: Callable[[str], None] | None = None,
+    jsonl: bool = False,
+) -> str:
+    prior = store.list_messages(conversation_id)
+    window = build_context_window(prior, budget=DEFAULT_CONTEXT_CHAR_BUDGET)
+    if window.truncated and not jsonl:
+        sys.stderr.write(
+            f"Aviso: contexto truncado — {window.omitted} mensagem(ns) antiga(s) "
+            f"fora do orçamento de {window.budget} caracteres.\n"
+        )
+    input_messages = [*window.messages, {"role": "user", "content": user_text}]
+    if jsonl:
+        emit_jsonl(
+            "start",
+            conversation_id=conversation_id,
+            model=model,
+            truncated=window.truncated,
+            omitted=window.omitted,
+        )
+    collected: list[str] = []
+
+    def capture(delta: str) -> None:
+        collected.append(delta)
+        if jsonl:
+            emit_jsonl("delta", text=delta)
+        elif on_delta:
+            on_delta(delta)
+
+    try:
+        text = bridge.chat_stream(model=model, input=input_messages, on_delta=capture)
+    except KeyboardInterrupt:
+        if jsonl:
+            emit_jsonl("error", code="cancelled", message="Interrompido.", partial=bool(collected))
+        raise
+    except SiwcError as exc:
+        partial = "".join(collected)
+        if partial:
+            store.append_turn(
+                conversation_id,
+                user_text=user_text,
+                assistant_text=partial,
+                status="partial",
+                model=model,
+                title_if_empty=suggest_title(user_text),
+            )
+        if jsonl:
+            emit_jsonl("error", code=exc.code, message=exc.message, retryable=exc.retryable)
+        raise
+
+    final = text or "".join(collected)
+    store.append_turn(
+        conversation_id,
+        user_text=user_text,
+        assistant_text=final,
+        status="complete",
+        model=model,
+        title_if_empty=suggest_title(user_text),
+    )
+    if jsonl:
+        emit_jsonl("done", conversation_id=conversation_id, text=final)
+    return final
+
+
 def run_chat_repl(
     bridge: SiwcBridge,
     *,
     model: str | None = None,
     one_shot: str | None = None,
+    conversation_id: str | None = None,
+    create_new: bool = False,
+    jsonl: bool = False,
+    history_path: Path | None = None,
     write: Callable[[str], None] | None = None,
     read_line: Callable[[], str] | None = None,
 ) -> int:
     out = write or (lambda text: print(text, end="", flush=True))
     readline = read_line or (lambda: sys.stdin.readline())
 
-    session = bridge.request("session")
-    if not isinstance(session, dict) or session.get("status") != "connected":
-        out("Não há sessão conectada. Rode: ryoku login\n")
-        return 3
-    if not session.get("sharing"):
-        out(
-            "Sessão autenticada, mas sem consentimento de uso do plano (session.sharing=false).\n"
-            "Rode: ryoku login --reconsent\n"
-        )
+    try:
+        session = require_sharing_session(bridge)
+    except SiwcError as exc:
+        if jsonl:
+            emit_jsonl("error", code=exc.code, message=exc.message)
+        else:
+            out(f"{exc.message}\n")
         return 3
 
+    profile_id = str(session["profileId"])
     try:
         selected = pick_model(bridge, model)
     except SiwcError as exc:
-        out(f"{exc.message}\n")
+        if jsonl:
+            emit_jsonl("error", code=exc.code, message=exc.message)
+        else:
+            out(f"{exc.message}\n")
         return 3
 
-    out(f"緑 Ryoku chat — modelo: {selected}\n")
-    out("Digite mensagens. Ctrl+C ou linha vazia para sair. Histórico não é salvo automaticamente.\n\n")
-
-    def turn(prompt: str) -> None:
-        out("Ryoku: ")
+    store = HistoryStore(history_path or default_db_path())
+    try:
         try:
-            bridge.chat_stream(
+            conv = store.resolve_conversation(
+                profile_id,
+                conversation_id=conversation_id,
+                create_new=create_new,
                 model=selected,
-                message=prompt,
-                on_delta=lambda delta: out(delta),
             )
-        except KeyboardInterrupt:
-            out("\n[interrupção]\n")
-            raise
-        out("\n\n")
+        except KeyError as exc:
+            out(f"{exc}\n")
+            return 3
 
-    if one_shot is not None:
-        try:
-            turn(one_shot)
-        except SiwcError as exc:
-            out(f"\nErro [{exc.code}]: {exc.message}\n")
-            return 1
-        except KeyboardInterrupt:
-            out("\n")
-            return 130
-        return 0
+        if not jsonl:
+            out(f"緑 Ryoku chat — modelo: {selected}\n")
+            out(f"Conversa: {conv.id} — {conv.title}\n")
+            out("Histórico local persistente. Ctrl+C ou linha vazia para sair.\n\n")
 
-    while True:
-        try:
-            out("Você: ")
-            line = readline()
-            if line == "":
-                # EOF
-                out("\n")
-                return 0
-            prompt = line.rstrip("\n")
-            if not prompt.strip():
-                out("Saindo.\n")
-                return 0
-            turn(prompt)
-        except SiwcError as exc:
-            out(f"\nErro [{exc.code}]: {exc.message}\n")
-            if exc.code in {"sign_in_required", "sharing_not_enabled", "invalid_grant"}:
-                return 3
-            continue
-        except KeyboardInterrupt:
-            out("\nSaindo.\n")
-            return 130
+        def turn(prompt: str) -> None:
+            if not jsonl:
+                out("Ryoku: ")
+            try:
+                run_turn(
+                    bridge,
+                    store,
+                    conversation_id=conv.id,
+                    model=selected,
+                    user_text=prompt,
+                    on_delta=(None if jsonl else (lambda delta: out(delta))),
+                    jsonl=jsonl,
+                )
+            except KeyboardInterrupt:
+                if not jsonl:
+                    out("\n[interrupção — histórico anterior preservado]\n")
+                raise
+            if not jsonl:
+                out("\n\n")
+
+        if one_shot is not None:
+            try:
+                turn(one_shot)
+            except SiwcError as exc:
+                if not jsonl:
+                    out(f"\nErro [{exc.code}]: {exc.message}\n")
+                return 1
+            except KeyboardInterrupt:
+                if not jsonl:
+                    out("\n")
+                return 130
+            return 0
+
+        while True:
+            try:
+                if not jsonl:
+                    out("Você: ")
+                line = readline()
+                if line == "":
+                    if not jsonl:
+                        out("\n")
+                    return 0
+                prompt = line.rstrip("\n")
+                if not prompt.strip():
+                    if not jsonl:
+                        out("Saindo.\n")
+                    return 0
+                turn(prompt)
+            except SiwcError as exc:
+                if not jsonl:
+                    out(f"\nErro [{exc.code}]: {exc.message}\n")
+                if exc.code in {"sign_in_required", "sharing_not_enabled", "invalid_grant"}:
+                    return 3
+                continue
+            except KeyboardInterrupt:
+                if not jsonl:
+                    out("\nSaindo.\n")
+                return 130
+    finally:
+        store.close()

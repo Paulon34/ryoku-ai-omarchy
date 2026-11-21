@@ -195,13 +195,17 @@ class SiwcBridge:
         self,
         *,
         model: str,
-        message: str,
+        message: str | Sequence[Mapping[str, str]] | None = None,
+        input: str | Sequence[Mapping[str, str]] | None = None,
         instructions: str | None = None,
         on_delta: Callable[[str], None] | None = None,
     ) -> str:
         proc = self._ensure()
         assert proc.stdin and proc.stdout
-        args: dict[str, Any] = {"model": model, "input": message}
+        payload_input: Any = input if input is not None else message
+        if payload_input is None:
+            raise SiwcError("invalid_config", "Informe a mensagem ou o histórico de input.")
+        args: dict[str, Any] = {"model": model, "input": payload_input}
         if instructions:
             args["instructions"] = instructions
         proc.stdin.write(json.dumps({"op": "chat", "args": args}, ensure_ascii=False) + "\n")

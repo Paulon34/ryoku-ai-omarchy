@@ -34,7 +34,16 @@ jobs:
           ryoku doctor --json
           ryoku status
           ryoku chat || test $? -eq 3
+          ryoku history --help
+          test -f plugins/io.github.paulon34.ryoku-ai/manifest.json
+          python -c "import json; json.load(open('plugins/io.github.paulon34.ryoku-ai/manifest.json'))"
       - name: Compile
         run: python -m compileall -q src tests
       - name: Typecheck vendor SDK
         run: npm run build --prefix vendor/siwc-local
+      - name: Plugin contract
+        run: |
+          test -f plugins/io.github.paulon34.ryoku-ai/BarWidget.qml
+          test -f plugins/io.github.paulon34.ryoku-ai/Panel.qml
+          ! grep -iE 'access_token|refresh_token' plugins/io.github.paulon34.ryoku-ai/*.qml
+

@@ -1,32 +1,23 @@
 # 緑 Ryoku AI — Omarchy
 
-**A lightweight, conversation-first assistant for Omarchy / Arch Linux.** The Cursor IDE remains a separate coding tool.
+**A lightweight, conversation-first assistant for Omarchy / Arch Linux.**
 
 [Português](README.md) · English
 
-> **Pre-alpha v0.2 (Sprint 1):** CLI, diagnostics, and SIWC via pinned `@siwc/local`. **Real-notebook PASS_REAL is still pending.** No Codex-token extraction and no separately billed API key.
+> **Pre-alpha v0.3 (Sprint 2):** persistent local history + Quickshell plugin. **Notebook PASS_REAL still pending.** No Codex tokens or separately billed API keys.
 
-## Run it
+## Features
 
-Python 3.11+. For login/chat: **Node.js 22+**, `npm`, and Linux Secret Service / KWallet (`libsecret`):
+- SIWC login via pinned `@siwc/local` bridge (see [docs/AUTH.md](docs/AUTH.md))
+- SQLite conversation history shared by terminal and bar panel ([docs/HISTORY.md](docs/HISTORY.md))
+- Real context forwarding (prior messages resent in `input`)
+- Plugin `io.github.paulon34.ryoku-ai` with 緑 button; reversible install/rollback
 
 ```bash
-git clone https://github.com/Paulon34/ryoku-ai-omarchy.git
-cd ryoku-ai-omarchy
-python3 -m venv .venv
-.venv/bin/python -m pip install -e .
 (cd siwc_bridge && npm install)
-.venv/bin/ryoku doctor
-.venv/bin/ryoku login
-.venv/bin/ryoku chat
+pip install -e .
+ryoku login && ryoku chat
+scripts/install-plugin.sh
 ```
 
-Doctor still works without Node: `PYTHONPATH=src python3 -m ryoku_ai doctor`.
-
-Mock tests: `.venv/bin/python -m unittest discover -s tests -v`.
-
-## Authentication
-
-We use the official [Sign in with ChatGPT](https://developers.openai.com/siwc/quickstart) open-source plan-usage flow through a pinned `@siwc/local` bridge. Credentials are encrypted with an OS-backed key (no plaintext fallback). See [auth design](docs/AUTH.md).
-
-Original Ryoku code: **MIT**. Vendored DevKit code: OpenAI Noncommercial License. Independent community project; not affiliated with OpenAI or Omarchy.
+Original code: **MIT**. Vendored DevKit: OpenAI Noncommercial License.

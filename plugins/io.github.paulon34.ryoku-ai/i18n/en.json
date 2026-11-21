@@ -1,0 +1,17 @@
+{
+  "bar.tooltip": "Open Ryoku AI",
+  "panel.title": "Ryoku AI",
+  "panel.new": "New",
+  "panel.delete": "Delete",
+  "panel.deleteConfirm": "Delete this conversation permanently?",
+  "panel.deleteYes": "Delete",
+  "panel.deleteNo": "Cancel",
+  "panel.inputPlaceholder": "Message Ryoku…",
+  "panel.send": "Send",
+  "panel.loginRequired": "Sign in first: ryoku login",
+  "panel.empty": "No messages yet. Start a conversation.",
+  "panel.streaming": "Streaming…",
+  "panel.conversations": "Conversations",
+  "panel.refresh": "Refresh",
+  "panel.error": "Error"
+}
