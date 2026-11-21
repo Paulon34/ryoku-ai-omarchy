@@ -21,10 +21,11 @@
 ## Etapa B: screenshots/imagens e visão de verdade
 
 1. Arquivos PNG/JPEG/WebP e screenshot obtido via seleção ou ferramenta existente, com confirmação explícita de envio.
-2. Verificar em versão efetivamente instalada do `@siwc/local` se `streamResponse` aceita conteúdo estruturado no formato multimodal da Responses API e se o modelo/consentimento do usuário permitem visão. O bridge atual valida apenas strings; precisa de protocolo seguro e testes antes de liberar.
-3. Quando houver suporte, codificar imagem em formato aceito e enviar conteúdo binário real ao modelo (não apenas caminho, nome ou texto inventado). Streaming, limites, tamanho e erros devem ser explícitos.
-4. Se a modalidade não for suportada, mostrar "análise de imagens indisponível neste modelo/conta" em vez de simular visão ou trocar de provedor sem autorização.
-5. Teste PASS_REAL com print contendo um erro visual que **não apareça no prompt textual** e checar se o diagnóstico menciona detalhes da imagem.
+2. **Limitação confirmada na versão atualmente vendorizada:** `vendor/siwc-local/src/types.ts` declara `ResponseInputMessage.content: string` e `vendor/siwc-local/src/responses.ts` rejeita conteúdo não textual. Portanto, `streamResponse` do SDK atual **não aceita imagens**; não habilitar `input_image` por simples mudança no QML/bridge.
+3. Para visão real: (a) aguardar suporte multimodal em versão oficial compatível de `@siwc/local`; ou (b) adicionar um backend local de visão opt-in (por exemplo, modelo compatível no Ollama) somente após medir hardware/recursos e obter autorização do usuário. Não usar tokens/rotas alternativas fora da integração suportada.
+4. Quando houver suporte, codificar imagem em formato aceito e enviar conteúdo binário real ao modelo (não apenas caminho, nome ou texto inventado). Streaming, limites, tamanho e erros devem ser explícitos.
+5. Se a modalidade não for suportada, mostrar "análise de imagens indisponível neste modelo/conta" em vez de simular visão ou trocar de provedor sem autorização.
+6. Teste PASS_REAL com print contendo um erro visual que **não apareça no prompt textual** e checar se o diagnóstico menciona detalhes da imagem.
 
 ## Privacidade e compatibilidade
 
