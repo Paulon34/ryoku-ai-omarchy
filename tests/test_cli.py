@@ -119,11 +119,11 @@ class CLITests(unittest.TestCase):
             args = ["history", "rename", conv.id, "--title-stdin", "--history-db", str(db)]
             with patch("ryoku_ai.cli.bridge_ready", return_value=(True, "ok")):
                 with patch("ryoku_ai.cli._bridge", return_value=bridge):
-                    with patch("sys.stdin", io.StringIO("Meu título novo\\n")):
+                    with patch("sys.stdin", io.StringIO("Meu título novo\n")):
                         with contextlib.redirect_stdout(io.StringIO()):
                             self.assertEqual(main(args), 0)
                     # Não aceita um título vazio, nem dois métodos ao mesmo tempo.
-                    with patch("sys.stdin", io.StringIO("  \\n")):
+                    with patch("sys.stdin", io.StringIO("  \n")):
                         with contextlib.redirect_stderr(io.StringIO()):
                             self.assertEqual(main(args), 3)
                     with contextlib.redirect_stderr(io.StringIO()):
