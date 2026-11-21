@@ -200,6 +200,8 @@ class PluginContractTests(unittest.TestCase):
         self.assertIn("--request-stdin", panel)
         self.assertIn("FileDialog", panel)
         self.assertIn("pendingAttachments", panel)
+        self.assertIn("paste-image", panel)
+        self.assertIn("visionUnavailable", panel)
         self.assertIn("textFormat: Text.PlainText", panel)
         self.assertIn("panel.emptyBrand", panel)
         self.assertIn("panel.emptyHeadline", panel)
@@ -231,6 +233,8 @@ class PluginContractTests(unittest.TestCase):
                 "panel.attach",
                 "panel.attachRemove",
                 "panel.attachLimit",
+                "panel.visionUnavailable",
+                "panel.attachFilterImages",
             ):
                 self.assertIn(key, data)
                 self.assertTrue(str(data[key]).strip())

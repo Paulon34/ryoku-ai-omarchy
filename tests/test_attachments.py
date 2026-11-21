@@ -10,10 +10,13 @@ from ryoku_ai.attachments import (
     extract_file,
     extract_many,
     format_attachments_for_prompt,
+    inspect_file,
+    inspect_many,
     parse_request_stdin,
     persist_extracted_text,
     load_extracted_text,
     delete_extracted_text,
+    vision_status,
 )
 from ryoku_ai.history import HistoryStore, build_context_window
 
@@ -60,11 +63,24 @@ class AttachmentExtractionTests(unittest.TestCase):
             extract_file(path)
         self.assertEqual(ctx.exception.code, "unsupported_type")
 
-    def test_image_blocked_phase1(self):
+    def test_image_preview_ok_but_extract_blocked(self):
         path = self._write("shot.png", b"\x89PNG\r\n\x1a\n" + b"\x00" * 32)
+        meta = inspect_file(path)
+        self.assertEqual(meta["kind"], "image")
+        self.assertFalse(meta["vision_available"])
+        self.assertIn("indisponível", meta["warning"].lower())
         with self.assertRaises(AttachmentError) as ctx:
             extract_file(path)
         self.assertEqual(ctx.exception.code, "vision_unavailable")
+        status = vision_status()
+        self.assertFalse(status["vision_available"])
+        self.assertTrue(status["siwc_text_only"])
+
+    def test_inspect_many_allows_image_preview(self):
+        path = self._write("a.png", b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
+        items = inspect_many([str(path)])
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["filename"], "a.png")
 
     def test_symlink_denied(self):
         target = self._write("real.txt", "segredo")
@@ -226,6 +242,55 @@ class AttachmentCliTests(unittest.TestCase):
             # Metadados públicos: só prévia curta, nunca o campo text completo.
             self.assertNotIn("text", data["attachments"][0])
             self.assertLessEqual(len(data["attachments"][0].get("preview", "")), 240)
+
+    def test_attach_capabilities_and_image_inspect(self):
+        from ryoku_ai.cli import main
+        import contextlib
+        import io
+
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(main(["attach", "capabilities", "--json"]), 0)
+        caps = json.loads(out.getvalue())
+        self.assertFalse(caps["vision_available"])
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "shot.png"
+            path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 32)
+            payload = json.dumps({"paths": [str(path)]})
+            out2 = io.StringIO()
+            with patch("sys.stdin", io.StringIO(payload)):
+                with contextlib.redirect_stdout(out2):
+                    self.assertEqual(main(["attach", "inspect", "--json"]), 0)
+            data = json.loads(out2.getvalue())
+            self.assertTrue(data["ok"])
+            self.assertEqual(data["attachments"][0]["kind"], "image")
+            self.assertFalse(data["vision"]["vision_available"])
+
+    def test_paste_image_writes_once(self):
+        from ryoku_ai.cli import main
+        import contextlib
+        import io
+
+        png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+        with tempfile.TemporaryDirectory() as directory:
+            text_dir = Path(directory) / "clipboard-images"
+            text_dir.mkdir()
+            with patch("ryoku_ai.attachments.clipboard_image_dir", return_value=text_dir):
+                with patch("ryoku_ai.attachments.shutil.which", side_effect=lambda n: "/bin/wl-paste" if n == "wl-paste" else None):
+                    with patch(
+                        "ryoku_ai.attachments.subprocess.run",
+                        return_value=MagicMock(returncode=0, stdout=png, stderr=b""),
+                    ):
+                        out = io.StringIO()
+                        with contextlib.redirect_stdout(out):
+                            code = main(["attach", "paste-image", "--json"])
+            self.assertEqual(code, 0)
+            data = json.loads(out.getvalue())
+            self.assertTrue(data["ok"])
+            self.assertEqual(data["attachments"][0]["kind"], "image")
+            self.assertFalse(data["vision"]["vision_available"])
+            self.assertTrue(Path(data["attachments"][0]["path"]).is_file())
 
 
 class AttachmentChatContextTests(unittest.TestCase):

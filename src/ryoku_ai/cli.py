@@ -9,7 +9,13 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from . import __version__
-from .attachments import AttachmentError, extract_many, parse_request_stdin
+from .attachments import (
+    AttachmentError,
+    inspect_many,
+    parse_request_stdin,
+    save_clipboard_image_once,
+    vision_status,
+)
 from .chat import run_chat_repl
 from .diagnostics import collect, pretty
 from .history import HistoryStore, default_db_path
@@ -78,13 +84,23 @@ def build_parser() -> argparse.ArgumentParser:
     chat.add_argument("--storage-dir", type=Path)
     chat.add_argument("--history-db", type=Path, help="caminho do SQLite de conversas")
 
-    attach = subs.add_parser("attach", help="inspecionar anexos locais (Fase 1: texto/PDF)")
+    attach = subs.add_parser(
+        "attach",
+        help="inspecionar anexos locais (texto/PDF; imagens só com visão real)",
+    )
     attach_subs = attach.add_subparsers(dest="attach_command", required=True)
     a_inspect = attach_subs.add_parser(
         "inspect",
         help="validar/extrair metadados; paths via JSON stdin {\"paths\":[...]}",
     )
     a_inspect.add_argument("--json", action="store_true", help="saída JSON (padrão para UI)")
+    a_paste = attach_subs.add_parser(
+        "paste-image",
+        help="captura única da imagem do clipboard (wl-paste/xclip); sem monitoramento",
+    )
+    a_paste.add_argument("--json", action="store_true")
+    a_caps = attach_subs.add_parser("capabilities", help="capacidades de visão/anexo")
+    a_caps.add_argument("--json", action="store_true")
 
     history = subs.add_parser("history", help="gerenciar conversas locais")
     history_subs = history.add_subparsers(dest="history_command", required=True)
@@ -280,6 +296,24 @@ def _cmd_models(args: argparse.Namespace) -> int:
 
 
 def _cmd_attach(args: argparse.Namespace) -> int:
+    if args.attach_command == "capabilities":
+        print(json.dumps(vision_status(), ensure_ascii=False, indent=2))
+        return 0
+    if args.attach_command == "paste-image":
+        try:
+            path = save_clipboard_image_once()
+            items = inspect_many([str(path)])
+        except AttachmentError as exc:
+            print(json.dumps({"ok": False, "error": {"code": exc.code, "message": exc.message}}))
+            return 1
+        print(
+            json.dumps(
+                {"ok": True, "attachments": items, "vision": vision_status()},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 0
     if args.attach_command != "inspect":
         return 2
     raw = sys.stdin.read()
@@ -293,13 +327,13 @@ def _cmd_attach(args: argparse.Namespace) -> int:
         print(json.dumps({"ok": False, "error": {"code": "invalid_request", "message": "Informe paths: []"}}))
         return 2
     try:
-        items = extract_many([str(p) for p in paths])
+        items = inspect_many([str(p) for p in paths])
     except AttachmentError as exc:
         print(json.dumps({"ok": False, "error": {"code": exc.code, "message": exc.message}}))
         return 1
     print(
         json.dumps(
-            {"ok": True, "attachments": [item.to_public_dict() for item in items]},
+            {"ok": True, "attachments": items, "vision": vision_status()},
             ensure_ascii=False,
             indent=2,
         )

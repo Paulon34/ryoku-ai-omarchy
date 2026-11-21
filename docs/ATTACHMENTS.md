@@ -1,9 +1,14 @@
 # Anexos no Ryoku AI
 
-**Status Fase 1 (texto/PDF):** implementado nesta branch (`feat/chat-file-attachments`).  
-**Status Fase 2 (imagens/visão):** bloqueado — `@siwc/local` vendorizado aceita somente `content: string`.
+**Status Fase 1 (texto/PDF):** PR #10 (`feat/chat-file-attachments`).  
+**Status Fase 2 (imagens UI):** esta branch (`feat/chat-image-vision`) — seleção PNG/JPEG/WebP, Ctrl+V (captura única), miniatura e aviso claro.  
+**Análise visual:** **não funcional** — `@siwc/local` aceita somente `content: string`. Envio de imagem ao modelo falha com `vision_unavailable` (sem resumo inventado).
 
-Não afirmar análise visual sem backend compatível comprovado no hardware (PASS_REAL).
+Não declarar visão OK sem PASS_REAL no hardware com detalhe exclusivo no print.
+
+### Hardware local (checagem pré-modelo)
+
+Medido neste notebook antes de qualquer download: ~15 GiB RAM (~6 GiB disponível), driver NVIDIA **indisponível** (`nvidia-smi` falhou), ~421 GiB livres em `/home`. **Não** instalar Ollama/modelos multimodais nem alterar provedor sem autorização explícita.
 
 ## Fase 1 — o que funciona
 
@@ -39,12 +44,21 @@ O REPL/CLI sem anexos permanece: `ryoku chat` e `--prompt-stdin` / `-p`.
 
 PDF opcional: `pip install 'ryoku-ai-omarchy[pdf]'` ou `pdftotext` (poppler).
 
-## Fase 2 — imagens (não liberar sem prova)
+## Fase 2 — imagens (UI sim; visão não)
 
-- PNG/JPEG/WebP, Ctrl+V, miniatura, screenshot: UI pode ser esboçada, mas análise exige SDK/backend multimodal.
-- Bloqueio atual: `vendor/siwc-local` tipa e valida entrada textual; Responses API via SIWC **não** implica visão automática.
-- Opção futura: Ollama multimodal **opt-in**, só após medir RAM/VRAM/disco e autorização explícita.
-- Até lá, anexar imagem retorna `vision_unavailable` com mensagem clara na UI.
+Já nesta PR draft:
+
+- Filtro de imagens no `FileDialog`; prévia com miniatura; remoção/substituição.
+- `ryoku attach paste-image` (wl-paste/xclip, **uma** leitura — sem monitor contínuo); painel Ctrl+V com fallback para texto.
+- `ryoku attach capabilities` → `vision_available: false`.
+- `inspect` aceita imagem só para metadados/prévia; `extract`/`chat --request-stdin` rejeita com `vision_unavailable`.
+
+Ainda bloqueado / não feito:
+
+- Envio multimodal real ao SIWC (SDK string-only).
+- Backend Ollama opt-in (`RYOKU_VISION_BACKEND`) — stub de env existe, **sem** implementação nem download.
+- Screenshot dedicado (evolução): use ferramenta do Omarchy + anexar PNG, ou Ctrl+V do print.
+- Teste PASS_REAL “detalhe só no print” — **adiado** até backend compatível.
 
 ## Privacidade
 

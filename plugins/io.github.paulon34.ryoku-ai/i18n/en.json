@@ -27,11 +27,14 @@
   "panel.attach": "Attach file",
   "panel.attachTitle": "Choose files for Ryoku",
   "panel.attachFilterDocs": "Documents and code",
+  "panel.attachFilterImages": "Images",
   "panel.attachFilterAll": "All files",
   "panel.attachInspecting": "Validating attachment…",
   "panel.attachError": "Could not attach the file.",
   "panel.attachLimit": "Attachment limit for this message reached.",
   "panel.attachRemove": "Remove attachment",
   "panel.attachTruncated": "truncated",
-  "panel.attachments": "attachments"
+  "panel.attachments": "attachments",
+  "panel.visionUnavailable": "Image analysis unavailable on this backend (SIWC is text-only).",
+  "panel.visionUnavailableShort": "no vision"
 }
