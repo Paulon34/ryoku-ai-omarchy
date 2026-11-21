@@ -16,3 +16,9 @@ chatgpt-host.json
 chatgpt-profiles.json
 local-data/
 .secrets/
+siwc_bridge/node_modules/
+vendor/siwc-local/node_modules/
+vendor/siwc-local/dist/
+*.log
+.DS_Store
+

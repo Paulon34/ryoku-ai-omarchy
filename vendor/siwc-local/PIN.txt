@@ -1,0 +1,4 @@
+source=https://github.com/openai/sign-in-with-chatgpt-devkit
+path=packages/local
+commit=0a36fefeb913055c8c7a1a29b63d82b96b2e841a
+retrieved=2026-11-21

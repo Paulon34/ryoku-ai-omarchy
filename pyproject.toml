@@ -4,13 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ryoku-ai-omarchy"
-version = "0.1.0"
+version = "0.2.0"
 description = "Lightweight, privacy-first AI assistant foundation for Omarchy / Arch Linux"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [{name = "Ryoku contributors"}]
 dependencies = []
+
+[project.optional-dependencies]
+# Login/chat also require Node.js 22+ and `npm install` inside siwc_bridge/.
+siwc = []
+
 
 [project.scripts]
 ryoku = "ryoku_ai.cli:run"
