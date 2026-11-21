@@ -10,7 +10,7 @@ Terminal primeiro · ChatGPT com consentimento · Segurança · Quickshell
 
 </div>
 
-> **Pré-alpha v0.4 (Fase 1 anexos):** histórico + painel Obsidian Gold + anexos de texto/PDF. Visão/imagens ainda bloqueadas pelo SIWC textual. **PASS_REAL no notebook ainda pendente.** Não usa tokens de Codex nem chave de API cobrada à parte.
+> **Pré-alpha v0.5 (ditado + anexos):** composer com 🎙 via Omarchy/Superwhisper; anexos texto/PDF; imagens só UI (`vision_unavailable`). **PASS_REAL no notebook ainda pendente.** Sem merge automático das PRs draft.
 
 ## A ideia
 
@@ -23,6 +23,7 @@ Um comando `ryoku chat` para conversar naturalmente com um assistente via termin
 - `ryoku attach inspect` para validar arquivos localmente
 - `ryoku history list|show|rename|delete|clear` (exclusão só com confirmação)
 - Plugin `io.github.paulon34.ryoku-ai` (BarWidget + Panel + seletor de anexos)
+- Ditado no painel: [docs/DICTATION.md](docs/DICTATION.md)
 - Detalhes de anexos: [docs/ATTACHMENTS.md](docs/ATTACHMENTS.md)
 
 ## Como testar no Omarchy

@@ -35,8 +35,19 @@ Panel {
   property var pendingAttachments: []
   property bool loggedIn: true
 
+  // Ditado: idle | arming | recording | transcribing | error
+  property string dictationState: "idle"
+  property string dictationBaseline: ""
+  property int dictationGeneration: 0
+  property bool dictationCancelAvailable: false
+  property bool dictationCloud: false
+  property bool dictationCloudConsented: false
+  property bool dictationCapsLoaded: false
+  property string dictationPrivacyHint: ""
+
   readonly property string ryokuBin: "ryoku"
   readonly property int maxPendingAttachments: 5
+  readonly property bool dictationBusy: root.dictationState === "recording" || root.dictationState === "transcribing" || root.dictationState === "arming"
 
   Theme {
     id: theme
@@ -50,12 +61,128 @@ Panel {
   function open() {
     root.controller.show()
     Qt.callLater(root.reloadAll)
+    Qt.callLater(root.loadDictationCapabilities)
   }
 
   function close() {
+    if (root.dictationBusy)
+      root.cancelDictation()
     root.confirmDelete = false
     root.renaming = false
     root.controller.hide()
+  }
+
+  function loadDictationCapabilities() {
+    capsProc.command = [root.ryokuBin, "dictation", "capabilities", "--json"]
+    capsProc.running = true
+  }
+
+  function startDictation() {
+    if (root.busy || root.renameBusy || !root.loggedIn || root.dictationBusy)
+      return
+    if (!root.dictationCapsLoaded) {
+      root.statusLine = strings.t("panel.dictationLoading")
+      root.loadDictationCapabilities()
+      return
+    }
+    if (root.dictationCloud && !root.dictationCloudConsented) {
+      root.statusLine = root.dictationPrivacyHint || strings.t("panel.dictationCloudWarn")
+      root.dictationCloudConsented = true
+      return
+    }
+    root.dictationGeneration += 1
+    root.dictationBaseline = String(root.draft || "")
+    root.dictationState = "arming"
+    root.statusLine = strings.t("panel.dictationRecording")
+    input.forceActiveFocus()
+    dictationActionProc.command = [root.ryokuBin, "dictation", "start", "--json"]
+    dictationActionProc.running = true
+  }
+
+  function stopDictation() {
+    if (root.dictationState !== "recording" && root.dictationState !== "arming")
+      return
+    root.dictationState = "transcribing"
+    root.statusLine = strings.t("panel.dictationTranscribing")
+    input.forceActiveFocus()
+    dictationActionProc.command = [root.ryokuBin, "dictation", "stop", "--json"]
+    dictationActionProc.running = true
+  }
+
+  function cancelDictation() {
+    if (!root.dictationBusy && root.dictationState !== "error")
+      return
+    root.dictationGeneration += 1
+    dictationPoll.stop()
+    // Mantém o draft atual (texto pré-sessão + digitação manual). Cancel do backend
+    // evita injeção da transcrição; não apagamos o que o usuário já escreveu.
+    if (root.dictationCancelAvailable) {
+      root.dictationState = "idle"
+      root.statusLine = strings.t("panel.dictationCancelled")
+      dictationActionProc.command = [root.ryokuBin, "dictation", "cancel", "--json"]
+      dictationActionProc.running = true
+    } else {
+      root.dictationState = "error"
+      root.statusLine = strings.t("panel.dictationCancelUnavailable")
+    }
+    input.forceActiveFocus()
+  }
+
+  function onDictationActionFinished(ok, payload) {
+    if (!ok) {
+      var msg = (payload && payload.error && payload.error.message)
+          ? String(payload.error.message)
+          : strings.t("panel.dictationError")
+      root.dictationState = "error"
+      root.statusLine = msg
+      return
+    }
+    var action = payload && payload.action ? String(payload.action) : ""
+    if (action === "start") {
+      root.dictationState = "recording"
+      root.statusLine = strings.t("panel.dictationRecording")
+      input.forceActiveFocus()
+      dictationPoll.restart()
+      return
+    }
+    if (action === "stop") {
+      root.dictationState = "transcribing"
+      root.statusLine = strings.t("panel.dictationTranscribing")
+      input.forceActiveFocus()
+      dictationPoll.restart()
+      return
+    }
+    if (action === "cancel") {
+      root.dictationState = "idle"
+      dictationPoll.stop()
+      return
+    }
+  }
+
+  function onDictationStatus(payload) {
+    if (!payload)
+      return
+    var phase = String(payload.phase || "")
+    if (root.dictationState === "recording") {
+      root.statusLine = strings.t("panel.dictationRecording")
+      if (phase === "idle" && !payload.recording) {
+        // Backend parou por conta própria.
+        root.dictationState = "idle"
+        root.statusLine = ""
+        dictationPoll.stop()
+      }
+      return
+    }
+    if (root.dictationState === "transcribing") {
+      if (phase === "idle" || payload.ready === true && !payload.recording && !payload.transcribing) {
+        root.dictationState = "idle"
+        root.statusLine = ""
+        dictationPoll.stop()
+        input.forceActiveFocus()
+      } else {
+        root.statusLine = strings.t("panel.dictationTranscribing")
+      }
+    }
   }
 
   function urlToPath(url) {
@@ -501,6 +628,94 @@ Panel {
     onExited: function (exitCode, exitStatus) {
       if (exitCode !== 0 && root.statusLine === strings.t("panel.attachInspecting"))
         root.statusLine = strings.t("panel.attachError")
+    }
+  }
+
+  Process {
+    id: capsProc
+    running: false
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var raw = String(this.text || "").trim()
+        if (raw === "")
+          return
+        var obj
+        try {
+          obj = JSON.parse(raw)
+        } catch (e) {
+          return
+        }
+        root.dictationCapsLoaded = true
+        root.dictationCancelAvailable = !!(obj.cancel && obj.cancel.available)
+        root.dictationCloud = !!(obj.processing && obj.processing.cloud)
+        root.dictationPrivacyHint = (obj.processing && obj.processing.privacy_warning_pt)
+            ? String(obj.processing.privacy_warning_pt)
+            : ""
+        if (!obj.ok && root.statusLine === "")
+          root.statusLine = strings.t("panel.dictationUnavailable")
+      }
+    }
+  }
+
+  Process {
+    id: dictationActionProc
+    running: false
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var raw = String(this.text || "").trim()
+        var obj = null
+        if (raw !== "") {
+          try {
+            obj = JSON.parse(raw)
+          } catch (e) {
+            obj = null
+          }
+        }
+        root.onDictationActionFinished(!!(obj && obj.ok !== false && !(obj.error)), obj || {})
+      }
+    }
+    stderr: StdioCollector {
+      onStreamFinished: {
+        // Sem áudio/transcrição — só sinaliza falha genérica.
+        if (root.dictationBusy && String(this.text || "").trim() !== "")
+          root.statusLine = strings.t("panel.dictationError")
+      }
+    }
+  }
+
+  Process {
+    id: dictationStatusProc
+    running: false
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var raw = String(this.text || "").trim()
+        if (raw === "")
+          return
+        var obj
+        try {
+          obj = JSON.parse(raw)
+        } catch (e) {
+          return
+        }
+        root.onDictationStatus(obj)
+      }
+    }
+  }
+
+  Timer {
+    id: dictationPoll
+    interval: 450
+    repeat: true
+    running: false
+    onTriggered: {
+      if (!root.dictationBusy) {
+        dictationPoll.stop()
+        return
+      }
+      if (dictationStatusProc.running)
+        return
+      dictationStatusProc.command = [root.ryokuBin, "dictation", "status", "--json"]
+      dictationStatusProc.running = true
     }
   }
 
@@ -1083,8 +1298,62 @@ Panel {
               foreground: enabled ? theme.gold : theme.textMuted
               accent: theme.gold
               background: "transparent"
-              enabled: !root.busy && !root.renameBusy && root.loggedIn
+              enabled: !root.busy && !root.renameBusy && root.loggedIn && !root.dictationBusy
               onClicked: root.openFilePicker()
+            }
+
+            Button {
+              Layout.alignment: Qt.AlignVCenter
+              text: "🎙"
+              tooltipText: root.dictationCloud && !root.dictationCloudConsented
+                  ? strings.t("panel.dictationCloudWarn")
+                  : strings.t("panel.dictationStart")
+              bordered: true
+              foreground: enabled ? theme.gold : theme.textMuted
+              accent: theme.gold
+              background: "transparent"
+              visible: root.dictationState === "idle" || root.dictationState === "error"
+              enabled: !root.busy && !root.renameBusy && root.loggedIn
+              onClicked: root.startDictation()
+            }
+
+            Button {
+              Layout.alignment: Qt.AlignVCenter
+              text: "■"
+              tooltipText: strings.t("panel.dictationStop")
+              bordered: true
+              foreground: enabled ? theme.gold : theme.textMuted
+              accent: theme.gold
+              background: "transparent"
+              visible: root.dictationState === "recording" || root.dictationState === "arming"
+              enabled: !root.busy && !root.renameBusy && root.loggedIn
+              onClicked: root.stopDictation()
+            }
+
+            Button {
+              Layout.alignment: Qt.AlignVCenter
+              text: "×"
+              tooltipText: root.dictationCancelAvailable
+                  ? strings.t("panel.dictationCancel")
+                  : strings.t("panel.dictationCancelUnavailable")
+              bordered: true
+              foreground: theme.danger
+              accent: theme.danger
+              background: "transparent"
+              visible: root.dictationBusy
+              enabled: root.dictationCancelAvailable && !root.busy
+              onClicked: root.cancelDictation()
+            }
+
+            Text {
+              Layout.alignment: Qt.AlignVCenter
+              visible: root.dictationBusy
+              textFormat: Text.PlainText
+              color: theme.gold
+              font.pixelSize: Style.font.caption
+              text: root.dictationState === "transcribing"
+                  ? strings.t("panel.dictationTranscribing")
+                  : strings.t("panel.dictationRecording")
             }
 
             TextField {
@@ -1096,12 +1365,17 @@ Panel {
               enabled: !root.busy && !root.renameBusy && root.loggedIn
               foreground: theme.text
               accent: theme.gold
-              onTextChanged: root.draft = text
+              onTextChanged: {
+                // Durante gravação o Superwhisper injeta no campo focado; espelha no draft.
+                root.draft = text
+              }
               background: Rectangle {
                 color: theme.bg
                 radius: theme.radiusNone
                 border.width: 1
-                border.color: input.activeFocus ? theme.gold : theme.divider
+                border.color: root.dictationBusy
+                    ? theme.gold
+                    : (input.activeFocus ? theme.gold : theme.divider)
                 opacity: input.enabled ? 1 : 0.5
               }
               Keys.onEscapePressed: function (event) {
@@ -1121,6 +1395,10 @@ Panel {
                   event.accepted = false
                   return
                 }
+                if (root.dictationBusy) {
+                  event.accepted = true
+                  return
+                }
                 event.accepted = true
                 root.sendMessage()
               }
@@ -1135,7 +1413,7 @@ Panel {
               foreground: enabled ? theme.gold : theme.textMuted
               accent: theme.gold
               background: "transparent"
-              enabled: !root.busy && !root.renameBusy && root.loggedIn && String(root.draft).trim() !== ""
+              enabled: !root.busy && !root.renameBusy && root.loggedIn && !root.dictationBusy && String(root.draft).trim() !== ""
               onClicked: root.sendMessage()
             }
           }

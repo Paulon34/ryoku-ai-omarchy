@@ -18,6 +18,7 @@ class CLITests(unittest.TestCase):
         text = stream.getvalue()
         self.assertIn("RYOKU AI", text)
         self.assertIn("history", text)
+        self.assertIn("dictation", text)
 
     def test_status_without_bridge(self):
         stream = io.StringIO()
@@ -202,6 +203,8 @@ class PluginContractTests(unittest.TestCase):
         self.assertIn("pendingAttachments", panel)
         self.assertIn("paste-image", panel)
         self.assertIn("visionUnavailable", panel)
+        self.assertIn("startDictation", panel)
+        self.assertIn("dictationBusy", panel)
         self.assertIn("textFormat: Text.PlainText", panel)
         self.assertIn("panel.emptyBrand", panel)
         self.assertIn("panel.emptyHeadline", panel)
@@ -235,6 +238,9 @@ class PluginContractTests(unittest.TestCase):
                 "panel.attachLimit",
                 "panel.visionUnavailable",
                 "panel.attachFilterImages",
+                "panel.dictationStart",
+                "panel.dictationStop",
+                "panel.dictationCancel",
             ):
                 self.assertIn(key, data)
                 self.assertTrue(str(data[key]).strip())
