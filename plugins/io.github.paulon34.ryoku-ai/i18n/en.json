@@ -13,5 +13,10 @@
   "panel.streaming": "Streaming…",
   "panel.conversations": "Conversations",
   "panel.refresh": "Refresh",
-  "panel.error": "Error"
+  "panel.error": "Error",
+  "panel.rename": "Rename",
+  "panel.renamePlaceholder": "New conversation title…",
+  "panel.renameSave": "Save",
+  "panel.renameCancel": "Cancel",
+  "panel.renameEmpty": "The title cannot be empty."
 }
