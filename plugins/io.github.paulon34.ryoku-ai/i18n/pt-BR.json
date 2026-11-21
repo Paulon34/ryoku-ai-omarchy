@@ -6,10 +6,13 @@
   "panel.deleteConfirm": "Apagar esta conversa permanentemente?",
   "panel.deleteYes": "Apagar",
   "panel.deleteNo": "Cancelar",
-  "panel.inputPlaceholder": "Mensagem para o Ryoku…",
+  "panel.inputPlaceholder": "Escreva para o Ryoku…",
   "panel.send": "Enviar",
   "panel.loginRequired": "Faça login antes: ryoku login",
   "panel.empty": "Sem mensagens. Comece uma conversa.",
+  "panel.emptyBrand": "緑 Ryoku AI",
+  "panel.emptyHeadline": "Como posso ajudar hoje?",
+  "panel.emptySubtext": "Comece uma conversa para explorar seu Linux.",
   "panel.streaming": "Transmitindo…",
   "panel.conversations": "Conversas",
   "panel.refresh": "Atualizar",
@@ -18,5 +21,7 @@
   "panel.renamePlaceholder": "Novo título da conversa…",
   "panel.renameSave": "Salvar",
   "panel.renameCancel": "Cancelar",
-  "panel.renameEmpty": "O título não pode ficar vazio."
+  "panel.renameEmpty": "O título não pode ficar vazio.",
+  "panel.you": "Você",
+  "panel.assistant": "Ryoku"
 }

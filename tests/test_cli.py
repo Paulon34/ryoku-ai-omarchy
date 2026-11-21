@@ -193,12 +193,43 @@ class PluginContractTests(unittest.TestCase):
         self.assertEqual(manifest["entryPoints"]["barWidget"], "BarWidget.qml")
         self.assertTrue((plugin / "BarWidget.qml").is_file())
         self.assertTrue((plugin / "Panel.qml").is_file())
+        self.assertTrue((plugin / "Theme.qml").is_file())
         panel = (plugin / "Panel.qml").read_text(encoding="utf-8")
+        theme = (plugin / "Theme.qml").read_text(encoding="utf-8")
         self.assertIn("stdinEnabled: true", panel)
         self.assertIn("--prompt-stdin", panel)
         self.assertIn("textFormat: Text.PlainText", panel)
+        self.assertIn("panel.emptyBrand", panel)
+        self.assertIn("panel.emptyHeadline", panel)
+        self.assertIn("#09090B", theme)
+        self.assertIn("#D4AF67", theme)
+        self.assertIn("#A83B42", theme)
+        self.assertIn("divider", theme)
         self.assertNotIn("access_token", panel.lower())
         self.assertNotIn("refresh_token", panel.lower())
+        # Empty-state copy must wrap and not live as a clipped single-line ListView child.
+        self.assertIn("wrapMode: Text.WordWrap", panel)
+        self.assertIn("id: emptyState", panel)
+        # Layout minimalista: superfície única + divisórias (não cards empilhados).
+        self.assertIn("theme.divider", panel)
+        self.assertIn("radiusNone", theme)
+
+
+    def test_i18n_empty_state_keys(self):
+        root = Path(__file__).resolve().parents[1]
+        i18n = root / "plugins" / "io.github.paulon34.ryoku-ai" / "i18n"
+        for name in ("en.json", "pt-BR.json"):
+            data = json.loads((i18n / name).read_text(encoding="utf-8"))
+            for key in (
+                "panel.emptyBrand",
+                "panel.emptyHeadline",
+                "panel.emptySubtext",
+                "panel.rename",
+                "panel.send",
+            ):
+                self.assertIn(key, data)
+                self.assertTrue(str(data[key]).strip())
+
 
 
 if __name__ == "__main__":
