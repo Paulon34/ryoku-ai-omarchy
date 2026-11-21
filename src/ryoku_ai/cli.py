@@ -25,7 +25,7 @@ from .dictation import status as dictation_status
 from .dictation import stop as dictation_stop
 from .history import HistoryStore, default_db_path
 from .siwc import SiwcBridge, SiwcError, bridge_ready, default_storage_dir, format_session
-from .vision import vision_capabilities
+from .vision import vision_capabilities, write_example_config
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -130,6 +130,11 @@ def build_parser() -> argparse.ArgumentParser:
     vision_subs = vision.add_subparsers(dest="vision_command", required=True)
     v_caps = vision_subs.add_parser("capabilities", help="SIWC/Ollama/hardware — só leitura")
     v_caps.add_argument("--json", action="store_true")
+    v_init = vision_subs.add_parser(
+        "init-config",
+        help="criar ~/.config/ryoku-ai/vision.toml (não sobrescreve sem --force)",
+    )
+    v_init.add_argument("--force", action="store_true", help="sobrescrever arquivo existente")
 
     history = subs.add_parser("history", help="gerenciar conversas locais")
     history_subs = history.add_subparsers(dest="history_command", required=True)
@@ -563,6 +568,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "dictation":
         return _cmd_dictation(args)
     if args.command == "vision":
+        if args.vision_command == "init-config":
+            path = write_example_config(force=bool(args.force))
+            print(json.dumps({"ok": True, "path": str(path)}, ensure_ascii=False, indent=2))
+            return 0
         if args.vision_command != "capabilities":
             return 2
         print(json.dumps(vision_capabilities(), ensure_ascii=False, indent=2))

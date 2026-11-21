@@ -265,13 +265,10 @@ def _extract_pdf(path: Path) -> tuple[str, str | None]:
 
 
 def vision_backend_enabled() -> bool:
-    """Opt-in explícito. Padrão: desligado (SIWC atual é só texto)."""
-    return os.environ.get("RYOKU_VISION_BACKEND", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "ollama",
-    }
+    """Opt-in via vision.toml ou env. Padrão: desligado (SIWC atual é só texto)."""
+    from .vision import load_vision_settings
+
+    return load_vision_settings().enabled
 
 
 def vision_status() -> dict[str, Any]:

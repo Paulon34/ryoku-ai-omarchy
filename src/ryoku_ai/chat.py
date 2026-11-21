@@ -403,8 +403,9 @@ def run_chat_repl(
 
 
 def os_environ_model_hint() -> str:
-    from .vision import ollama_model, vision_env_backend
+    from .vision import load_vision_settings
 
-    if vision_env_backend() in {"1", "true", "yes", "ollama"}:
-        return f"ollama:{ollama_model()}"
+    settings = load_vision_settings()
+    if settings.backend == "ollama":
+        return f"ollama:{settings.model}"
     return "unavailable"
