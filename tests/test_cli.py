@@ -19,6 +19,7 @@ class CLITests(unittest.TestCase):
         self.assertIn("RYOKU AI", text)
         self.assertIn("history", text)
         self.assertIn("dictation", text)
+        self.assertIn("vision", text)
 
     def test_status_without_bridge(self):
         stream = io.StringIO()
@@ -205,6 +206,8 @@ class PluginContractTests(unittest.TestCase):
         self.assertIn("visionUnavailable", panel)
         self.assertIn("startDictation", panel)
         self.assertIn("dictationBusy", panel)
+        self.assertIn("abortFailedSend", panel)
+        self.assertIn("sendSnapshot", panel)
         self.assertIn("textFormat: Text.PlainText", panel)
         self.assertIn("panel.emptyBrand", panel)
         self.assertIn("panel.emptyHeadline", panel)

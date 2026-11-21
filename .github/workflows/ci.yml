@@ -37,6 +37,8 @@ jobs:
           ryoku history --help
           ryoku dictation capabilities --json || true
           ryoku dictation --help
+          ryoku vision capabilities --json
+          ryoku vision --help
           test -f plugins/io.github.paulon34.ryoku-ai/manifest.json
           python -c "import json; json.load(open('plugins/io.github.paulon34.ryoku-ai/manifest.json'))"
           python -c "import json; json.load(open('plugins/io.github.paulon34.ryoku-ai/i18n/pt-BR.json'))"
@@ -51,6 +53,8 @@ jobs:
           ! grep -iE 'access_token|refresh_token' plugins/io.github.paulon34.ryoku-ai/*.qml
           grep -q startDictation plugins/io.github.paulon34.ryoku-ai/Panel.qml
           grep -q 'dictation capabilities' docs/DICTATION.md
+          grep -q abortFailedSend plugins/io.github.paulon34.ryoku-ai/Panel.qml
+          test -f docs/VISION.md
       - name: QML lint (optional)
         run: |
           if command -v qmllint >/dev/null; then

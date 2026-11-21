@@ -47,5 +47,6 @@
   "panel.dictationError": "Falha no ditado.",
   "panel.dictationUnavailable": "Ditado Omarchy indisponível.",
   "panel.dictationLoading": "Detectando backend de ditado…",
-  "panel.dictationCloudWarn": "Ditado em modo nuvem (Superwhisper). Clique de novo em 🎙 para confirmar e gravar. Áudio pode sair deste aparelho."
+  "panel.dictationCloudWarn": "Ditado em modo nuvem (Superwhisper). Clique de novo em 🎙 para confirmar e gravar. Áudio pode sair deste aparelho.",
+  "panel.visionBackend": "Visão"
 }

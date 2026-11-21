@@ -25,6 +25,7 @@ from .dictation import status as dictation_status
 from .dictation import stop as dictation_stop
 from .history import HistoryStore, default_db_path
 from .siwc import SiwcBridge, SiwcError, bridge_ready, default_storage_dir, format_session
+from .vision import vision_capabilities, write_example_config
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -121,6 +122,19 @@ def build_parser() -> argparse.ArgumentParser:
     ):
         sub = dictation_subs.add_parser(name, help=help_text)
         sub.add_argument("--json", action="store_true", help="saída JSON")
+
+    vision = subs.add_parser(
+        "vision",
+        help="capacidades de análise de imagem (opt-in; sem pull automático)",
+    )
+    vision_subs = vision.add_subparsers(dest="vision_command", required=True)
+    v_caps = vision_subs.add_parser("capabilities", help="SIWC/Ollama/hardware — só leitura")
+    v_caps.add_argument("--json", action="store_true")
+    v_init = vision_subs.add_parser(
+        "init-config",
+        help="criar ~/.config/ryoku-ai/vision.toml (não sobrescreve sem --force)",
+    )
+    v_init.add_argument("--force", action="store_true", help="sobrescrever arquivo existente")
 
     history = subs.add_parser("history", help="gerenciar conversas locais")
     history_subs = history.add_subparsers(dest="history_command", required=True)
@@ -530,7 +544,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"緑 RYOKU AI v{__version__}")
         print("Assistente de terminal para Omarchy / Arch Linux")
         print(
-            "Comandos: ryoku doctor | status | login | logout | models | chat | attach | dictation | history"
+            "Comandos: ryoku doctor | status | login | logout | models | chat | attach | dictation | vision | history"
         )
         print("Dica: `ryoku chat` retoma a conversa mais recente; `ryoku chat --new` cria outra.")
         return 0
@@ -553,6 +567,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _cmd_attach(args)
     if args.command == "dictation":
         return _cmd_dictation(args)
+    if args.command == "vision":
+        if args.vision_command == "init-config":
+            path = write_example_config(force=bool(args.force))
+            print(json.dumps({"ok": True, "path": str(path)}, ensure_ascii=False, indent=2))
+            return 0
+        if args.vision_command != "capabilities":
+            return 2
+        print(json.dumps(vision_capabilities(), ensure_ascii=False, indent=2))
+        return 0
     if args.command == "chat":
         return _cmd_chat(args)
     if args.command == "history":

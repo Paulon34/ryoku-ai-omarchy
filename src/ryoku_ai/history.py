@@ -454,7 +454,9 @@ class HistoryStore:
                 from .attachments import persist_extracted_text
 
                 for item in attachments:
-                    persist_extracted_text(item.id, item.text)
+                    # Imagens: metadados só; texto extraído de docs em disco (sem binários no SQLite).
+                    if getattr(item, "text", None):
+                        persist_extracted_text(item.id, item.text)
                     self._conn.execute(
                         "INSERT INTO attachments("
                         "id, message_id, conversation_id, profile_id, filename, extension, "

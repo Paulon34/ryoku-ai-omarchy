@@ -47,5 +47,6 @@
   "panel.dictationError": "Dictation failed.",
   "panel.dictationUnavailable": "Omarchy dictation unavailable.",
   "panel.dictationLoading": "Detecting dictation backend…",
-  "panel.dictationCloudWarn": "Cloud dictation (Superwhisper). Click 🎙 again to confirm and record. Audio may leave this device."
+  "panel.dictationCloudWarn": "Cloud dictation (Superwhisper). Click 🎙 again to confirm and record. Audio may leave this device.",
+  "panel.visionBackend": "Vision"
 }
